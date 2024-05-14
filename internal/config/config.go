@@ -22,7 +22,7 @@ type (
 	}
 )
 
-// New reads configuration with koanf
+// New reads configuration with koanf.
 func New() Config {
 	var instance Config
 
