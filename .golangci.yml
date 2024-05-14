@@ -1,0 +1,9 @@
+---
+ linters:
+   enable-all: true
+   disable:
+     - varnamelen
+     - maligned
+     - scopelint
+     - golint
+     - interfacer
