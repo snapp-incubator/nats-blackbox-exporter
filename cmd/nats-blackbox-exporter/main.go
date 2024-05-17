@@ -4,76 +4,29 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/nats-io/nats.go"
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/config"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
-	"go.uber.org/zap"
 )
 
 func main() {
 	cfg := config.New()
+	natsConfig := cfg.NATS
 
 	logger := logger.New(cfg.Logger)
 
-	nc, err := nats.Connect(cfg.NATS.URL)
-	if err != nil {
-		logger.Fatal("nats connection failed", zap.Error(err))
-	}
+	nc := client.Connect(logger, natsConfig)
 
-	logger.Info("nats connection successful",
-		zap.String("connected-addr", nc.ConnectedAddr()),
-		zap.Strings("discovered-servers", nc.DiscoveredServers()))
+	natsClient := client.New(nc, logger, natsConfig)
 
-	nc.SetDisconnectErrHandler(func(_ *nats.Conn, err error) {
-		logger.Fatal("nats disconnected", zap.Error(err))
-	})
+	go natsClient.Subscribe("subject1")
 
-	nc.SetReconnectHandler(func(_ *nats.Conn) {
-		logger.Warn("nats reconnected")
-	})
-
-	go subscribe(nc, logger)
-
-	go publish(nc, logger, cfg)
+	go natsClient.Publish("subject1")
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	logger.Info("Received termination signal. Exiting...")
 	os.Exit(0)
-}
-
-func publish(nc *nats.Conn, logger *zap.Logger, cfg config.Config) {
-	for {
-		msg, err := nc.Request("subject1", []byte("Hello, NATS!"), cfg.NATS.RequestTimeout)
-		if err != nil {
-			if err == nats.ErrTimeout {
-				logger.Error("Request timeout: No response received within the timeout period.")
-			} else if err == nats.ErrNoResponders {
-				logger.Error("Request failed: No responders available for the subject.")
-			} else {
-				logger.Error("Request failed: %v", zap.Error(err))
-			}
-		} else {
-			logger.Info("Received response successfully:", zap.ByteString("response", msg.Data))
-		}
-
-		time.Sleep(cfg.NATS.PublishInterval)
-	}
-}
-
-func subscribe(nc *nats.Conn, logger *zap.Logger) {
-	_, err := nc.Subscribe("subject1", func(msg *nats.Msg) {
-		logger.Info("Received message successfully: ", zap.ByteString("message", msg.Data))
-		err := nc.Publish(msg.Reply, []byte("Hi!"))
-		if err != nil {
-			logger.Error("Failed to publish response: %v", zap.Error(err))
-		}
-	})
-	if err != nil {
-		logger.Error("Failed to subscribe to subject 'subject1': %v", zap.Error(err))
-	}
-
 }

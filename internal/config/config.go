@@ -22,7 +22,6 @@ const (
 
 type (
 	// Config holds all configurations.
-
 	Config struct {
 		Logger logger.Config `json:"logger,omitempty" koanf:"logger"`
 		NATS   client.Config `json:"nats,omitempty" koanf:"nats"`
