@@ -17,6 +17,7 @@ func Default() Config {
 		NATS: client.Config{
 			URL:             "localhost:4222",
 			PublishInterval: 2 * time.Second,
+			RequestTimeout:  50 * time.Millisecond,
 		},
 	}
 }

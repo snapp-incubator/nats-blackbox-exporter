@@ -47,11 +47,17 @@ func main() {
 
 func publish(nc *nats.Conn, logger *zap.Logger, cfg config.Config) {
 	for {
-		err := nc.Publish("subject1", []byte("Hello, NATS!"))
+		msg, err := nc.Request("subject1", []byte("Hello, NATS!"), cfg.NATS.RequestTimeout)
 		if err != nil {
-			logger.Error("Error publishing message:", zap.Error(err))
+			if err == nats.ErrTimeout {
+				logger.Error("Request timeout: No response received within the timeout period.")
+			} else if err == nats.ErrNoResponders {
+				logger.Error("Request failed: No responders available for the subject.")
+			} else {
+				logger.Error("Request failed: %v", zap.Error(err))
+			}
 		} else {
-			logger.Info("Published message successfully")
+			logger.Info("Received response successfully:", zap.ByteString("response", msg.Data))
 		}
 
 		time.Sleep(cfg.NATS.PublishInterval)
@@ -61,10 +67,13 @@ func publish(nc *nats.Conn, logger *zap.Logger, cfg config.Config) {
 func subscribe(nc *nats.Conn, logger *zap.Logger) {
 	_, err := nc.Subscribe("subject1", func(msg *nats.Msg) {
 		logger.Info("Received message successfully: ", zap.ByteString("message", msg.Data))
+		err := nc.Publish(msg.Reply, []byte("Hi!"))
+		if err != nil {
+			logger.Error("Failed to publish response: %v", zap.Error(err))
+		}
 	})
 	if err != nil {
-		logger.Error("Error subscribing to subject:", zap.Error(err))
+		logger.Error("Failed to subscribe to subject 'subject1': %v", zap.Error(err))
 	}
 
-	select {}
 }
