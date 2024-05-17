@@ -12,8 +12,6 @@ import (
 	"go.uber.org/zap"
 )
 
-var publishInterval = 2 * time.Second
-
 func main() {
 	cfg := config.New()
 
@@ -38,7 +36,7 @@ func main() {
 
 	go subscribe(nc, logger)
 
-	go publish(nc, logger)
+	go publish(nc, logger, cfg)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -47,7 +45,7 @@ func main() {
 	os.Exit(0)
 }
 
-func publish(nc *nats.Conn, logger *zap.Logger) {
+func publish(nc *nats.Conn, logger *zap.Logger, cfg config.Config) {
 	for {
 		err := nc.Publish("subject1", []byte("Hello, NATS!"))
 		if err != nil {
@@ -56,7 +54,7 @@ func publish(nc *nats.Conn, logger *zap.Logger) {
 			logger.Info("Published message successfully")
 		}
 
-		time.Sleep(publishInterval)
+		time.Sleep(cfg.NATS.PublishInterval)
 	}
 }
 
