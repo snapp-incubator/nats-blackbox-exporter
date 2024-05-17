@@ -40,7 +40,11 @@ func main() {
 
 	go publish(nc, logger)
 
-	waitForSignal(logger)
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+	logger.Info("Received termination signal. Exiting...")
+	os.Exit(0)
 }
 
 func publish(nc *nats.Conn, logger *zap.Logger) {
@@ -65,12 +69,4 @@ func subscribe(nc *nats.Conn, logger *zap.Logger) {
 	}
 
 	select {}
-}
-
-func waitForSignal(logger *zap.Logger) {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
-	logger.Info("Received termination signal. Exiting...")
-	os.Exit(0)
 }
