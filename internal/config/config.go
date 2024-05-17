@@ -3,14 +3,21 @@ package config
 import (
 	"encoding/json"
 	"log"
+	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
 	"github.com/tidwall/pretty"
+)
+
+const (
+	// Prefix indicates environment variables prefix.
+	Prefix = "nbe_"
 )
 
 type (
@@ -33,8 +40,17 @@ func New() Config {
 		log.Fatalf("error loading default: %s", err)
 	}
 
+	// load configuration from file
 	if err := k.Load(file.Provider("config.yaml"), yaml.Parser()); err != nil {
 		log.Printf("error loading config.yaml")
+	}
+
+	// load environment variables
+	if err := k.Load(env.Provider(Prefix, ".", func(s string) string {
+		return strings.ReplaceAll(strings.ToLower(
+			strings.TrimPrefix(s, Prefix)), "__", ".")
+	}), nil); err != nil {
+		log.Printf("error loading environment variables: %s", err)
 	}
 
 	if err := k.Unmarshal("", &instance); err != nil {
