@@ -12,6 +12,7 @@ import (
 	"github.com/knadh/koanf/v2"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
 	"github.com/tidwall/pretty"
 )
 
@@ -25,6 +26,7 @@ type (
 	Config struct {
 		Logger logger.Config `json:"logger,omitempty" koanf:"logger"`
 		NATS   client.Config `json:"nats,omitempty" koanf:"nats"`
+		Metric metric.Config `json:"metric,omitempty" koanf:"metric"`
 	}
 )
 

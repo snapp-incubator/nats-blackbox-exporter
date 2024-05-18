@@ -5,6 +5,7 @@ import (
 
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
 )
 
 // Default return default configuration.
@@ -19,6 +20,10 @@ func Default() Config {
 			PublishInterval: 2 * time.Second,
 			RequestTimeout:  50 * time.Millisecond,
 			DefaultSubject:  "test",
+		},
+		Metric: metric.Config{
+			Address: ":8080",
+			Enabled: true,
 		},
 	}
 }

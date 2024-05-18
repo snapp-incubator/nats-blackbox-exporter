@@ -8,6 +8,7 @@ import (
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/config"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
 )
 
 func main() {
@@ -16,13 +17,13 @@ func main() {
 
 	logger := logger.New(cfg.Logger)
 
-	nc := client.Connect(logger, natsConfig)
+	metric.NewServer(cfg.Metric).Start(logger.Named("metric"))
 
-	natsClient := client.New(nc, logger, natsConfig)
+	natsClient := client.New(logger, natsConfig)
 
-	go natsClient.Subscribe("subject1")
+	go natsClient.Subscribe("")
 
-	go natsClient.Publish("subject1")
+	go natsClient.Publish("")
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
