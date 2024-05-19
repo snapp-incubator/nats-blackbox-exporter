@@ -42,6 +42,11 @@ func New(nc *nats.Conn, logger *zap.Logger, cfg Config) *Client {
 	}
 }
 
+func (c *Client) StartMessaging() {
+	go c.Subscribe("")
+	go c.Publish("")
+}
+
 func (c *Client) Publish(subject string) {
 	if subject == "" {
 		subject = c.Config.DefaultSubject
