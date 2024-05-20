@@ -11,7 +11,7 @@ import (
 	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
-	"github.com/snapp-incubator/nats-blackbox-exporter/internal/natsClient"
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/natsclient"
 	"github.com/tidwall/pretty"
 )
 
@@ -24,7 +24,7 @@ type (
 	// Config holds all configurations.
 	Config struct {
 		Logger logger.Config     `json:"logger,omitempty" koanf:"logger"`
-		NATS   natsClient.Config `json:"nats,omitempty" koanf:"nats"`
+		NATS   natsclient.Config `json:"nats,omitempty" koanf:"nats"`
 	}
 )
 

@@ -6,14 +6,14 @@ import (
 	"syscall"
 
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/config"
-	"github.com/snapp-incubator/nats-blackbox-exporter/internal/natsClient"
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/natsclient"
 	"go.uber.org/zap"
 )
 
 func main(cfg config.Config, logger *zap.Logger) {
 	natsConfig := cfg.NATS
 
-	client := natsClient.New(natsClient.Connect(logger, natsConfig), logger, natsConfig)
+	client := natsclient.New(natsclient.Connect(logger, natsConfig), logger, natsConfig)
 
 	client.StartMessaging()
 

@@ -1,4 +1,4 @@
-package natsClient
+package natsclient
 
 import (
 	"time"
