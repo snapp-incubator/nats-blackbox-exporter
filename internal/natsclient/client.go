@@ -1,4 +1,4 @@
-package client
+package natsclient
 
 import (
 	"time"
@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type Client struct {
+type NatsClient struct {
 	Conn    *nats.Conn
 	Logger  *zap.Logger
 	Config  Config
@@ -51,12 +51,25 @@ func connect(logger *zap.Logger, cfg Config) *nats.Conn {
 	return nc
 }
 
-func (c *Client) StartMessaging() {
+func (c *NatsClient) StartMessaging() {
 	go c.Subscribe("")
 	go c.Publish("")
 }
 
-func (c *Client) Publish(subject string) {
+func New(nc *nats.Conn, logger *zap.Logger, cfg Config) *NatsClient {
+	return &NatsClient{
+		Conn:   nc,
+		Logger: logger,
+		Config: cfg,
+	}
+}
+
+func (c *NatsClient) StartMessaging() {
+	go c.Subscribe("")
+	go c.Publish("")
+}
+
+func (c *NatsClient) Publish(subject string) {
 	if subject == "" {
 		subject = c.Config.DefaultSubject
 	}
@@ -82,7 +95,7 @@ func (c *Client) Publish(subject string) {
 	}
 }
 
-func (c *Client) Subscribe(subject string) {
+func (c *NatsClient) Subscribe(subject string) {
 	if subject == "" {
 		subject = c.Config.DefaultSubject
 	}

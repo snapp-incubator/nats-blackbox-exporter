@@ -3,9 +3,9 @@ package config
 import (
 	"time"
 
-	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/natsclient"
 )
 
 // Default return default configuration.
@@ -15,7 +15,7 @@ func Default() Config {
 		Logger: logger.Config{
 			Level: "debug",
 		},
-		NATS: client.Config{
+		NATS: natsclient.Config{
 			URL:             "localhost:4222",
 			PublishInterval: 2 * time.Second,
 			RequestTimeout:  50 * time.Millisecond,

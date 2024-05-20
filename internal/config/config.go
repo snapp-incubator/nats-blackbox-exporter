@@ -10,9 +10,9 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
-	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/natsclient"
 	"github.com/tidwall/pretty"
 )
 
