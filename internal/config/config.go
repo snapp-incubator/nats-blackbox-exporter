@@ -24,9 +24,9 @@ const (
 type (
 	// Config holds all configurations.
 	Config struct {
-		Logger logger.Config `json:"logger,omitempty" koanf:"logger"`
-		NATS   client.Config `json:"nats,omitempty" koanf:"nats"`
-		Metric metric.Config `json:"metric,omitempty" koanf:"metric"`
+		Logger logger.Config     `json:"logger,omitempty" koanf:"logger"`
+		NATS   natsclient.Config `json:"nats,omitempty" koanf:"nats"`
+		Metric metric.Config     `json:"metric,omitempty" koanf:"metric"`
 	}
 )
 

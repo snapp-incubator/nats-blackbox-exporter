@@ -14,12 +14,12 @@ type NatsClient struct {
 	Metrics Metrics
 }
 
-func New(logger *zap.Logger, cfg Config) *Client {
+func New(logger *zap.Logger, cfg Config) *NatsClient {
 	nc := connect(logger, cfg)
 
 	metrics := NewMetrics()
 
-	client := &Client{
+	client := &NatsClient{
 		Conn:    nc,
 		Logger:  logger,
 		Config:  cfg,
@@ -56,18 +56,13 @@ func (c *NatsClient) StartMessaging() {
 	go c.Publish("")
 }
 
-func New(nc *nats.Conn, logger *zap.Logger, cfg Config) *NatsClient {
-	return &NatsClient{
-		Conn:   nc,
-		Logger: logger,
-		Config: cfg,
-	}
-}
-
-func (c *NatsClient) StartMessaging() {
-	go c.Subscribe("")
-	go c.Publish("")
-}
+// func New(nc *nats.Conn, logger *zap.Logger, cfg Config) *NatsClient {
+// 	return &NatsClient{
+// 		Conn:   nc,
+// 		Logger: logger,
+// 		Config: cfg,
+// 	}
+// }
 
 func (c *NatsClient) Publish(subject string) {
 	if subject == "" {
