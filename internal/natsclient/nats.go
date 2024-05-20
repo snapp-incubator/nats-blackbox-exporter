@@ -14,7 +14,7 @@ type NatsClient struct {
 	Metrics Metrics
 }
 
-func New(logger *zap.Logger, cfg Config) *NatsClient {
+func New(cfg Config, logger *zap.Logger) *NatsClient {
 	nc := connect(logger, cfg)
 
 	metrics := NewMetrics()

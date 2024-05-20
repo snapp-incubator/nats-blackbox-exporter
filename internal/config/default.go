@@ -16,10 +16,13 @@ func Default() Config {
 			Level: "debug",
 		},
 		NATS: natsclient.Config{
-			URL:             "localhost:4222",
-			PublishInterval: 2 * time.Second,
-			RequestTimeout:  50 * time.Millisecond,
-			DefaultSubject:  "test",
+			URL:                    "localhost:4222",
+			PublishInterval:        2 * time.Second,
+			RequestTimeout:         50 * time.Millisecond,
+			DefaultSubject:         "test",
+			MaxPubAcksInflight:     10,
+			QueueSubscriptionGroup: "group",
+			FlushTimeout:           2 * time.Second,
 		},
 		Metric: metric.Config{
 			Address: ":8080",

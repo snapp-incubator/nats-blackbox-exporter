@@ -13,9 +13,11 @@ import (
 func main(cfg config.Config, logger *zap.Logger) {
 	natsConfig := cfg.NATS
 
-	client := natsclient.New(logger, natsConfig)
-
+	client := natsclient.New(natsConfig, logger)
 	client.StartMessaging()
+
+	jetstreamClient := natsclient.NewJetstream(natsConfig, logger)
+	jetstreamClient.StartJetstreamMessaging()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
