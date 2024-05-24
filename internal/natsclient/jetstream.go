@@ -18,47 +18,69 @@ type Jetstream struct {
 	jetstream  nats.JetStreamContext
 	config     *Config
 	logger     *zap.Logger
+	metrics    Metrics
 }
 
 // NewJetstream initializes NATS JetStream connection
 func NewJetstream(config Config, logger *zap.Logger) *Jetstream {
 	j := Jetstream{
-		config: &config,
-		logger: logger,
+		config:  &config,
+		logger:  logger,
+		metrics: NewMetrics(),
 	}
 
-	var err error
-	j.connection, err = nats.Connect(j.config.URL)
-	if err != nil {
-		logger.Panic("could not connect to nats", zap.Error(err))
-	}
+	j.connect()
 
-	// JetStream connection
-	j.jetstream, err = j.connection.JetStream()
-	if err != nil {
-		logger.Panic("could not connect to jetstream", zap.Error(err))
-	}
+	j.createJetstreamContext()
 
-	// Create a stream
-	_, err = j.jetstream.AddStream(&nats.StreamConfig{
-		Name:     "test",
-		Subjects: []string{"test.*"},
-	})
-	if err != nil {
-		logger.Panic("could not add stream", zap.Error(err))
-	}
+	j.createStream()
 
 	return &j
 }
 
+func (j *Jetstream) connect() {
+	var err error
+	j.connection, err = nats.Connect(j.config.URL)
+	if err != nil {
+		j.logger.Panic("could not connect to nats", zap.Error(err))
+	}
+
+	j.connection.SetDisconnectErrHandler(func(_ *nats.Conn, err error) {
+		j.metrics.ConnectionErrors.Add(1)
+		j.logger.Error("nats disconnected", zap.Error(err))
+	})
+
+	j.connection.SetReconnectHandler(func(_ *nats.Conn) {
+		j.logger.Warn("nats reconnected")
+	})
+}
+
+func (j *Jetstream) createJetstreamContext() {
+	var err error
+	j.jetstream, err = j.connection.JetStream()
+	if err != nil {
+		j.logger.Panic("could not connect to jetstream", zap.Error(err))
+	}
+}
+
+func (j *Jetstream) createStream() {
+	_, err := j.jetstream.AddStream(&nats.StreamConfig{
+		Name:     "test",
+		Subjects: []string{"test.*"},
+	})
+	if err != nil {
+		j.logger.Panic("could not add stream", zap.Error(err))
+	}
+}
+
 func (j *Jetstream) StartJetstreamMessaging() {
-	messageChannel := j.CreateSubscribe("test.1")
-	go j.JetstreamPublish("test.1")
-	go j.JetstreamSubscribe(messageChannel)
+	messageChannel := j.createSubscribe("test.1")
+	go j.jetstreamPublish("test.1")
+	go j.jetstreamSubscribe(messageChannel)
 }
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages
-func (j *Jetstream) CreateSubscribe(subject string) chan *Message {
+func (j *Jetstream) createSubscribe(subject string) chan *Message {
 
 	messageHandler, h := messageHandlerFactoryJetstream()
 	_, err := j.jetstream.Subscribe(
@@ -79,30 +101,44 @@ func (j *Jetstream) CreateSubscribe(subject string) chan *Message {
 
 }
 
-func (j *Jetstream) JetstreamSubscribe(h chan *Message) {
+func (j *Jetstream) jetstreamSubscribe(h chan *Message) {
 	for msg := range h {
 		var publishTime time.Time
 		publishTime.UnmarshalBinary(msg.Data)
-		j.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", time.Since(publishTime).Seconds()))
+		latency := time.Since(publishTime).Seconds()
+		j.metrics.Latency.Observe(latency)
+		j.metrics.SuccessCounter.WithLabelValues("successful subscribe").Add(1)
+		j.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 	}
 }
 
-func (j *Jetstream) JetstreamPublish(subject string) {
+func (j *Jetstream) jetstreamPublish(subject string) {
 	for {
-		t := time.Now()
-		tt, _ := t.MarshalBinary()
-
-		if ack, err := j.jetstream.Publish(subject, tt); err != nil {
-			j.logger.Error("jetstream publish message failed", zap.Error(err))
-		} else {
-			j.logger.Info("receive ack", zap.String("ack", ack.Stream))
+		t, err := time.Now().MarshalBinary()
+		if err != nil {
+			j.logger.Error("could not marshal current time.", zap.Error(err))
 		}
+
+		if ack, err := j.jetstream.Publish(subject, t); err != nil {
+			j.metrics.SuccessCounter.WithLabelValues("failed publish").Add(1)
+			if err == nats.ErrTimeout {
+				j.logger.Error("Request timeout: No response received within the timeout period.")
+			} else if err == nats.ErrNoStreamResponse {
+				j.logger.Error("Request failed: No Stream available for the subject.")
+			} else {
+				j.logger.Error("Request failed: %v", zap.Error(err))
+			}
+		} else {
+			j.metrics.SuccessCounter.WithLabelValues("successful publish").Add(1)
+			j.logger.Info("receive ack", zap.String("stream", ack.Stream))
+		}
+
 		time.Sleep(j.config.PublishInterval)
 	}
 }
 
 // Close closes NATS connection
-func (j *Jetstream) Close() {
+func (j *Jetstream) close() {
 	if err := j.connection.FlushTimeout(j.config.FlushTimeout); err != nil {
 		j.logger.Error("could not flush", zap.Error(err))
 	}

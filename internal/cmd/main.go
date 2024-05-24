@@ -13,8 +13,8 @@ import (
 func main(cfg config.Config, logger *zap.Logger) {
 	natsConfig := cfg.NATS
 
-	client := natsclient.New(natsConfig, logger)
-	client.StartMessaging()
+	// client := natsclient.New(natsConfig, logger)
+	// client.StartMessaging()
 
 	jetstreamClient := natsclient.NewJetstream(natsConfig, logger)
 	jetstreamClient.StartJetstreamMessaging()

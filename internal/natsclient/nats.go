@@ -104,7 +104,7 @@ func (c *NatsClient) Subscribe(subject string) {
 			c.Metrics.Latency.Observe(latency)
 			c.Logger.Info("Received message successfully: ", zap.Float64("latency", latency))
 		}
-		c.Metrics.SuccessCounter.WithLabelValues("subscribe").Add(1)
+		c.Metrics.SuccessCounter.WithLabelValues("successful subscribe").Add(1)
 
 		err = c.Conn.Publish(msg.Reply, []byte("ack!"))
 		if err != nil {
