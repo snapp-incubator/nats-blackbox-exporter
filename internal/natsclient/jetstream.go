@@ -23,7 +23,7 @@ type Jetstream struct {
 
 // NewJetstream initializes NATS JetStream connection
 func NewJetstream(config Config, logger *zap.Logger) *Jetstream {
-	j := Jetstream{
+	j := &Jetstream{
 		config:  &config,
 		logger:  logger,
 		metrics: NewMetrics(),
@@ -35,7 +35,7 @@ func NewJetstream(config Config, logger *zap.Logger) *Jetstream {
 
 	j.createStream()
 
-	return &j
+	return j
 }
 
 func (j *Jetstream) connect() {
