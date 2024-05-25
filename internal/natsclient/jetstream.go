@@ -64,12 +64,14 @@ func (j *Jetstream) createJetstreamContext() {
 }
 
 func (j *Jetstream) createStream() {
-	_, err := j.jetstream.AddStream(&nats.StreamConfig{
-		Name:     "test",
-		Subjects: []string{"test.*"},
-	})
-	if err != nil {
-		j.logger.Panic("could not add stream", zap.Error(err))
+	for _, streamConf := range j.config.Streams {
+		_, err := j.jetstream.AddStream(&nats.StreamConfig{
+			Name:     streamConf.Name,
+			Subjects: streamConf.Subjects,
+		})
+		if err != nil {
+			j.logger.Panic("could not add stream", zap.Error(err))
+		}
 	}
 }
 
@@ -92,7 +94,7 @@ func (j *Jetstream) createSubscribe(subject string) chan *Message {
 		nats.MaxAckPending(j.config.MaxPubAcksInflight),
 	)
 	if err != nil {
-		j.logger.Error("could not Subscribe", zap.Error(err))
+		j.logger.Panic("could not Subscribe", zap.Error(err))
 	} else {
 		j.logger.Info("Subscribed to %s successfully", zap.String("subject", subject))
 	}
@@ -154,4 +156,14 @@ func (j *Jetstream) messageHandlerFactoryJetstream() (nats.MsgHandler, chan *Mes
 			j.logger.Error("Failed to acknowledge the message", zap.Error(err))
 		}
 	}, ch
+}
+
+// Close closes NATS connection
+func (j *Jetstream) Close() {
+	if err := j.connection.FlushTimeout(j.config.FlushTimeout); err != nil {
+		j.logger.Error("could not flush", zap.Error(err))
+	}
+
+	j.connection.Close()
+	j.logger.Info("NATS is closed.")
 }

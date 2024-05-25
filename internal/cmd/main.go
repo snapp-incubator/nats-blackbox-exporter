@@ -22,6 +22,7 @@ func main(cfg config.Config, logger *zap.Logger) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
+	jetstreamClient.Close()
 	logger.Info("Received termination signal. Exiting...")
 	os.Exit(0)
 }

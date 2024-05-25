@@ -16,6 +16,11 @@ func Default() Config {
 			Level: "debug",
 		},
 		NATS: natsclient.Config{
+			Streams: []natsclient.Stream{natsclient.Stream{
+				Name:     "test",
+				Subjects: []string{"test.*"},
+			},
+			},
 			URL:                    "localhost:4222",
 			PublishInterval:        2 * time.Second,
 			RequestTimeout:         50 * time.Millisecond,
