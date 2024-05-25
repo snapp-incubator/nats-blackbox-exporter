@@ -10,13 +10,13 @@ import (
 )
 
 // MetricServer contains information about metrics server.
-type server struct {
+type ServerInfo struct {
 	srv     *http.ServeMux
 	address string
 }
 
 // NewServer creates a new monitoring server.
-func NewServer(cfg Config) server {
+func NewServer(cfg Config) ServerInfo {
 	var srv *http.ServeMux
 
 	if cfg.Enabled {
@@ -24,7 +24,7 @@ func NewServer(cfg Config) server {
 		srv.Handle("/metrics", promhttp.Handler())
 	}
 
-	return server{
+	return ServerInfo{
 		address: cfg.Server.Address,
 		srv:     srv,
 	}
@@ -32,7 +32,7 @@ func NewServer(cfg Config) server {
 
 // Start creates and run a metric server for prometheus in new go routine.
 // nolint: mnd
-func (s server) Start(logger *zap.Logger) {
+func (s ServerInfo) Start(logger *zap.Logger) {
 	go func() {
 		// nolint: exhaustruct
 		srv := http.Server{
