@@ -30,7 +30,7 @@ func Default() Config {
 			FlushTimeout:           2 * time.Second,
 		},
 		Metric: metric.Config{
-			Address: ":8080",
+			Server:  metric.Server{Address: ":8080"},
 			Enabled: true,
 		},
 	}
