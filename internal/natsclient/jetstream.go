@@ -46,12 +46,13 @@ func (j *Jetstream) connect() {
 	}
 
 	j.connection.SetDisconnectErrHandler(func(_ *nats.Conn, err error) {
-		j.metrics.ConnectionErrors.Add(1)
+		j.metrics.Connection.WithLabelValues("disconnection").Add(1)
 		j.logger.Error("nats disconnected", zap.Error(err))
 	})
 
 	j.connection.SetReconnectHandler(func(_ *nats.Conn) {
 		j.logger.Warn("nats reconnected")
+		j.metrics.Connection.WithLabelValues("reconnection").Add(1)
 	})
 }
 

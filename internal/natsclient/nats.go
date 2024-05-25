@@ -27,11 +27,12 @@ func New(cfg Config, logger *zap.Logger) *NatsClient {
 	}
 
 	nc.SetDisconnectErrHandler(func(_ *nats.Conn, err error) {
-		metrics.ConnectionErrors.Add(1)
+		metrics.Connection.WithLabelValues("disconnection").Add(1)
 		logger.Error("nats disconnected", zap.Error(err))
 	})
 
 	nc.SetReconnectHandler(func(_ *nats.Conn) {
+		metrics.Connection.WithLabelValues("reconnection").Add(1)
 		logger.Warn("nats reconnected")
 	})
 

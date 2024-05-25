@@ -25,28 +25,9 @@ var latencyBuckets = []float64{
 
 // Metrics has all the client metrics.
 type Metrics struct {
-	ConnectionErrors prometheus.Counter
-	Latency          prometheus.Histogram
-	SuccessCounter   prometheus.CounterVec
-}
-
-// nolint: ireturn
-func newCounter(counterOpts prometheus.CounterOpts) prometheus.Counter {
-	ev := prometheus.NewCounter(counterOpts)
-
-	if err := prometheus.Register(ev); err != nil {
-		var are prometheus.AlreadyRegisteredError
-		if ok := errors.As(err, &are); ok {
-			ev, ok = are.ExistingCollector.(prometheus.Counter)
-			if !ok {
-				panic("different metric type registration")
-			}
-		} else {
-			panic(err)
-		}
-	}
-
-	return ev
+	Connection     prometheus.CounterVec
+	Latency        prometheus.Histogram
+	SuccessCounter prometheus.CounterVec
 }
 
 // nolint: ireturn
@@ -89,13 +70,13 @@ func newCounterVec(counterOpts prometheus.CounterOpts, labelNames []string) prom
 
 func NewMetrics() Metrics {
 	return Metrics{
-		ConnectionErrors: newCounter(prometheus.CounterOpts{
+		Connection: newCounterVec(prometheus.CounterOpts{
 			Namespace:   Namespace,
 			Subsystem:   Subsystem,
 			Name:        "connection_errors_total",
-			Help:        "total number of connection errors",
+			Help:        "total number of disconnections and reconnections",
 			ConstLabels: nil,
-		}),
+		}, []string{"type"}),
 		// nolint: exhaustruct
 		Latency: newHistogram(prometheus.HistogramOpts{
 			Namespace:   Namespace,
@@ -109,7 +90,7 @@ func NewMetrics() Metrics {
 			Namespace:   Namespace,
 			Subsystem:   Subsystem,
 			Name:        "success_counter",
-			Help:        "success rate",
+			Help:        "publish and consume success rate",
 			ConstLabels: nil,
 		}, []string{"type"}),
 	}
