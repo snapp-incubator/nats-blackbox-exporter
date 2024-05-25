@@ -16,7 +16,7 @@ func Default() Config {
 			Level: "debug",
 		},
 		NATS: natsclient.Config{
-			Streams: []natsclient.Stream{natsclient.Stream{
+			Streams: []natsclient.Stream{{
 				Name:     "test",
 				Subjects: []string{"test.*"},
 			},
