@@ -17,7 +17,7 @@ func main(cfg config.Config, logger *zap.Logger) {
 	// client.StartMessaging()
 
 	jetstreamClient := natsclient.NewJetstream(natsConfig, logger)
-	jetstreamClient.StartJetstreamMessaging()
+	jetstreamClient.Startblackboxtest()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

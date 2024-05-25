@@ -73,7 +73,7 @@ func (j *Jetstream) createStream() {
 	}
 }
 
-func (j *Jetstream) StartJetstreamMessaging() {
+func (j *Jetstream) Startblackboxtest() {
 	messageChannel := j.createSubscribe("test.1")
 	go j.jetstreamPublish("test.1")
 	go j.jetstreamSubscribe(messageChannel)
