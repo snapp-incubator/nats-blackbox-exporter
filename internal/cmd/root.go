@@ -5,6 +5,7 @@ import (
 
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/config"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
 	"github.com/spf13/cobra"
 )
 
@@ -15,6 +16,8 @@ func Execute() {
 	cfg := config.New()
 
 	logger := logger.New(cfg.Logger)
+
+	metric.NewServer(cfg.Metric).Start(logger.Named("metric"))
 
 	// nolint: exhaustruct
 	root := &cobra.Command{

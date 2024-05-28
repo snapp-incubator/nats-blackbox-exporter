@@ -13,13 +13,16 @@ import (
 func main(cfg config.Config, logger *zap.Logger) {
 	natsConfig := cfg.NATS
 
-	client := natsclient.New(natsclient.Connect(logger, natsConfig), logger, natsConfig)
+	// client := natsclient.New(natsConfig, logger)
+	// client.StartMessaging()
 
-	client.StartMessaging()
+	jetstreamClient := natsclient.NewJetstream(natsConfig, logger)
+	jetstreamClient.Startblackboxtest()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
+	jetstreamClient.Close()
 	logger.Info("Received termination signal. Exiting...")
 	os.Exit(0)
 }
