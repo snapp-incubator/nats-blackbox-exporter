@@ -1,62 +1,25 @@
+---
 project_name: nats-blackbox-exporter
 
 release:
-  draft: true
   github:
-    owner: snappcloud
+    owner: snapp-incubator
     name: nats-blackbox-exporter
 
-  name_template: 'Release {{.Tag}}'
+checksum: {}
 
 builds:
-  - main: ./cmd/nats-blackbox-exporter
-    id: nats-blackbox-exporter
-    binary: nats-blackbox-exporter
-    ldflags:
-      - "-s -w -X github.com/nats-io/nats-blackbox-exporter/cmd.Version={{ .Tag }}"
-    env:
-      - GO111MODULE=on
-      - CGO_ENABLED=0
+  - binary: gosimac
     goos:
-    - linux
-    - darwin
-    - windows
+      - linux
+      - darwin
+      - windows
     goarch:
-    - 386
-    - amd64
-    - arm
-    - arm64
-    goarm:
-    - 6
-    - 7
-    ignore:
-      - goos: darwin
-        goarch: 386
+      - amd64
+    main: ./cmd/nats-blackbox-exporter/main.go
 
 archives:
-  - id: zipfiles
-    wrap_in_directory: true
-    name_template: '{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm
-      }}v{{ .Arm }}{{ end }}'
-    format: zip
-    files:
-    - README.md
-    - nats-blackbox-exporter*
-
-nfpms:
-  - formats:
-      - deb
-    file_name_template: '{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm
-      }}v{{ .Arm }}{{ end }}'
-    bindir: /usr/local/bin
-    description: A Simplified Prometheus Monitoring Solution for NATS
-    vendor: nats.io
-    maintainer: Colin Sullivan <colin@nats.io>
-    homepage: https://nats.io
-    license: Apache 2.0
-
-snapshot:
-  name_template: SNAPSHOT-{{ .Commit }}
-
-checksum:
-  name_template: '{{ .ProjectName }}-v{{ .Version }}-checksums.txt'
+  - id: binary
+    format: binary
+  - id: default
+    format: tar.gz
