@@ -40,7 +40,6 @@ archives:
       }}v{{ .Arm }}{{ end }}'
     format: zip
     files:
-    - LICENSE
     - README.md
     - nats-blackbox-exporter*
 
