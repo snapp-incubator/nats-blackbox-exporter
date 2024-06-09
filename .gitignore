@@ -21,3 +21,4 @@
 config.yaml
 
 .DS_Store
+dist/

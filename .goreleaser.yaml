@@ -1,0 +1,25 @@
+---
+project_name: nats-blackbox-exporter
+
+release:
+  github:
+    owner: snapp-incubator
+    name: nats-blackbox-exporter
+
+checksum: {}
+
+builds:
+  - binary: gosimac
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+    main: ./cmd/nats-blackbox-exporter/main.go
+
+archives:
+  - id: binary
+    format: binary
+  - id: default
+    format: tar.gz
