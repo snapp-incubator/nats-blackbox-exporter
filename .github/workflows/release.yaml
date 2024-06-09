@@ -1,11 +1,12 @@
 ---
-name: goreleaser
+name: release
 on:
   push:
     tags:
       - '*'
 jobs:
   goreleaser:
+    name: release
     runs-on: ubuntu-latest
     steps:
       -
