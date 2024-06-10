@@ -1,0 +1,19 @@
+logger:
+  level: "debug"
+
+nats:
+  streams:
+    - name: "test"
+      subjects: ["test.*"]
+  url: "localhost:4222"
+  publish_interval: 2s
+  request_timeout: 50ms
+  default_subject: "test"
+  max_pub_acks_inflight: 1000
+  queue_subscription_group: "group"
+  flush_timeout: 2s
+
+metric:
+  server:
+    address: ":8080"
+  enabled: true
