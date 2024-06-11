@@ -3,7 +3,7 @@ package natsclient
 import "time"
 
 type Config struct {
-	Streams                []Stream      `json:"streams,omitempty"            koanf:"streams"`
+	Stream                 Stream        `json:"stream,omitempty"            koanf:"stream"`
 	URL                    string        `json:"url,omitempty"            koanf:"url"`
 	PublishInterval        time.Duration `json:"publish_interval" koanf:"publish_interval"`
 	RequestTimeout         time.Duration `json:"request_timeout" koanf:"request_timeout"`
@@ -14,6 +14,6 @@ type Config struct {
 }
 
 type Stream struct {
-	Name     string   `json:"name,omitempty"            koanf:"name"`
-	Subjects []string `json:"subjects,omitempty"            koanf:"subjects"`
+	Name    string `json:"name,omitempty"            koanf:"name"`
+	Subject string `json:"subject,omitempty"            koanf:"subject"`
 }
