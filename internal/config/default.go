@@ -16,15 +16,13 @@ func Default() Config {
 			Level: "debug",
 		},
 		NATS: natsclient.Config{
-			Streams: []natsclient.Stream{{
-				Name:     "test",
-				Subjects: []string{"test.*"},
-			},
+			Stream: natsclient.Stream{
+				Name:    "stream",
+				Subject: "test",
 			},
 			URL:                    "localhost:4222",
 			PublishInterval:        2 * time.Second,
 			RequestTimeout:         50 * time.Millisecond,
-			DefaultSubject:         "test",
 			MaxPubAcksInflight:     1000,
 			QueueSubscriptionGroup: "group",
 			FlushTimeout:           2 * time.Second,
