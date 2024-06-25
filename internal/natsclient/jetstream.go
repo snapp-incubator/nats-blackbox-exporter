@@ -1,7 +1,6 @@
 package natsclient
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -66,14 +65,25 @@ func (j *Jetstream) createJetstreamContext() {
 }
 
 func (j *Jetstream) createStream() {
-	fmt.Println([]string{j.config.Stream.Subject})
-	fmt.Println(j.config.Stream.Name)
-	_, err := j.jetstream.AddStream(&nats.StreamConfig{
-		Name:     j.config.Stream.Name,
-		Subjects: []string{j.config.Stream.Subject},
-	})
-	if err != nil {
-		j.logger.Panic("could not add stream", zap.Error(err))
+	_, err := j.jetstream.StreamInfo(j.config.Stream.Name)
+	if err == nil {
+		_, err = j.jetstream.UpdateStream(&nats.StreamConfig{
+			Name:     j.config.Stream.Name,
+			Subjects: []string{j.config.Stream.Subject},
+		})
+		if err != nil {
+			j.logger.Panic("could not add subject to existing stream", zap.Error(err))
+		}
+	} else if err == nats.ErrStreamNotFound && j.config.NewStreamAllow {
+		_, err = j.jetstream.AddStream(&nats.StreamConfig{
+			Name:     j.config.Stream.Name,
+			Subjects: []string{j.config.Stream.Subject},
+		})
+		if err != nil {
+			j.logger.Panic("could not add stream", zap.Error(err))
+		}
+	} else {
+		j.logger.Panic("could not add subject", zap.Error(err))
 	}
 }
 
