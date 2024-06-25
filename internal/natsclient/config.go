@@ -3,6 +3,7 @@ package natsclient
 import "time"
 
 type Config struct {
+	NewStreamAllow         bool          `json:"new_stream_allow" koanf:"new_stream_allow"`
 	Stream                 Stream        `json:"stream,omitempty"            koanf:"stream"`
 	URL                    string        `json:"url,omitempty"            koanf:"url"`
 	PublishInterval        time.Duration `json:"publish_interval" koanf:"publish_interval"`

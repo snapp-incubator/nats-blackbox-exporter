@@ -2,9 +2,10 @@ logger:
   level: "debug"
 
 nats:
+  new_stream_allow: true
   stream:         
-    - name: "stream"
-      subject: "test"   # optional
+    name: "stream"
+    subject: "test"   # optional
   url: "localhost:4222"
   publish_interval: 2s
   request_timeout: 50ms

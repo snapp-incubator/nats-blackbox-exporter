@@ -16,6 +16,7 @@ func Default() Config {
 			Level: "debug",
 		},
 		NATS: natsclient.Config{
+			NewStreamAllow: true,
 			Stream: natsclient.Stream{
 				Name:    "stream",
 				Subject: "test",

@@ -42,7 +42,7 @@ func New() Config {
 	}
 
 	// load configuration from file
-	if err := k.Load(file.Provider("config.yaml"), yaml.Parser()); err != nil {
+	if err := k.Load(file.Provider("setting/config.yaml"), yaml.Parser()); err != nil {
 		log.Printf("error loading config.yaml")
 	}
 
