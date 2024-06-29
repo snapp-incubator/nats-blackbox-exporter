@@ -1,10 +1,18 @@
 package natsclient
 
 import (
+	"slices"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
+)
+
+var (
+	successfulSubscribe = "successful subscribe"
+	failedPublish       = "failed publish"
+	successfulPublish   = "successful publish"
 )
 
 type Message struct {
@@ -26,7 +34,7 @@ func NewJetstream(config Config, logger *zap.Logger) *Jetstream {
 	j := &Jetstream{
 		config:  &config,
 		logger:  logger,
-		metrics: NewMetrics(),
+		metrics: NewMetrics(config.ClientName),
 	}
 
 	j.connect()
@@ -65,32 +73,48 @@ func (j *Jetstream) createJetstreamContext() {
 }
 
 func (j *Jetstream) createStream() {
-	_, err := j.jetstream.StreamInfo(j.config.Stream.Name)
-	if err == nil {
-		_, err = j.jetstream.UpdateStream(&nats.StreamConfig{
-			Name:     j.config.Stream.Name,
-			Subjects: []string{j.config.Stream.Subject},
-		})
-		if err != nil {
-			j.logger.Panic("could not add subject to existing stream", zap.Error(err))
+	for _, stream := range j.config.Streams {
+		info, err := j.jetstream.StreamInfo(stream.Name)
+		if err == nil {
+			j.updateStream(stream, info)
+		} else if err == nats.ErrStreamNotFound && j.config.NewStreamAllow {
+			j.addStream(stream)
+		} else {
+			j.logger.Panic("could not add subject", zap.Error(err))
 		}
-	} else if err == nats.ErrStreamNotFound && j.config.NewStreamAllow {
-		_, err = j.jetstream.AddStream(&nats.StreamConfig{
-			Name:     j.config.Stream.Name,
-			Subjects: []string{j.config.Stream.Subject},
-		})
-		if err != nil {
-			j.logger.Panic("could not add stream", zap.Error(err))
-		}
-	} else {
-		j.logger.Panic("could not add subject", zap.Error(err))
 	}
+}
+func (j *Jetstream) updateStream(stream Stream, info *nats.StreamInfo) {
+	subjects := append(info.Config.Subjects, stream.Subject)
+	slices.Sort(subjects)
+	subjects = slices.Compact(subjects)
+	_, err := j.jetstream.UpdateStream(&nats.StreamConfig{
+		Name:     stream.Name,
+		Subjects: subjects,
+	})
+	if err != nil {
+		j.logger.Panic("could not add subject to existing stream", zap.Error(err))
+	}
+	j.logger.Info("stream updated")
+}
+
+func (j *Jetstream) addStream(stream Stream) {
+	_, err := j.jetstream.AddStream(&nats.StreamConfig{
+		Name:     stream.Name,
+		Subjects: []string{stream.Subject},
+	})
+	if err != nil {
+		j.logger.Panic("could not add stream", zap.Error(err))
+	}
+	j.logger.Info("add new stream")
 }
 
 func (j *Jetstream) StartBlackboxTest() {
-	messageChannel := j.createSubscribe(j.config.Stream.Subject)
-	go j.jetstreamPublish(j.config.Stream.Subject)
-	go j.jetstreamSubscribe(messageChannel)
+	for _, stream := range j.config.Streams {
+		messageChannel := j.createSubscribe(stream.Subject)
+		go j.jetstreamPublish(stream.Subject, stream.Name)
+		go j.jetstreamSubscribe(messageChannel, stream.Name)
+	}
 }
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages
@@ -115,7 +139,7 @@ func (j *Jetstream) createSubscribe(subject string) chan *Message {
 
 }
 
-func (j *Jetstream) jetstreamSubscribe(h chan *Message) {
+func (j *Jetstream) jetstreamSubscribe(h chan *Message, streamName string) {
 	for msg := range h {
 		var publishTime time.Time
 		err := publishTime.UnmarshalBinary(msg.Data)
@@ -126,12 +150,15 @@ func (j *Jetstream) jetstreamSubscribe(h chan *Message) {
 		}
 		latency := time.Since(publishTime).Seconds()
 		j.metrics.Latency.Observe(latency)
-		j.metrics.SuccessCounter.WithLabelValues("successful subscribe").Add(1)
+		j.metrics.SuccessCounter.With(prometheus.Labels{
+			"type":   successfulSubscribe,
+			"stream": streamName,
+		}).Add(1)
 		j.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 	}
 }
 
-func (j *Jetstream) jetstreamPublish(subject string) {
+func (j *Jetstream) jetstreamPublish(subject string, streamName string) {
 	for {
 		t, err := time.Now().MarshalBinary()
 		if err != nil {
@@ -139,7 +166,10 @@ func (j *Jetstream) jetstreamPublish(subject string) {
 		}
 
 		if ack, err := j.jetstream.Publish(subject, t); err != nil {
-			j.metrics.SuccessCounter.WithLabelValues("failed publish").Add(1)
+			j.metrics.SuccessCounter.With(prometheus.Labels{
+				"type":   failedPublish,
+				"stream": streamName,
+			}).Add(1)
 			if err == nats.ErrTimeout {
 				j.logger.Error("Request timeout: No response received within the timeout period.")
 			} else if err == nats.ErrNoStreamResponse {
@@ -148,7 +178,10 @@ func (j *Jetstream) jetstreamPublish(subject string) {
 				j.logger.Error("Request failed: %v", zap.Error(err))
 			}
 		} else {
-			j.metrics.SuccessCounter.WithLabelValues("successful publish").Add(1)
+			j.metrics.SuccessCounter.With(prometheus.Labels{
+				"type":   successfulPublish,
+				"stream": streamName,
+			}).Add(1)
 			j.logger.Info("receive ack", zap.String("stream", ack.Stream))
 		}
 
