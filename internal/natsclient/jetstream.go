@@ -149,7 +149,9 @@ func (j *Jetstream) jetstreamSubscribe(h chan *Message, streamName string) {
 			return
 		}
 		latency := time.Since(publishTime).Seconds()
-		j.metrics.Latency.Observe(latency)
+		j.metrics.Latency.With(prometheus.Labels{
+			"stream": streamName,
+		}).Observe(latency)
 		j.metrics.SuccessCounter.With(prometheus.Labels{
 			"type":   successfulSubscribe,
 			"stream": streamName,

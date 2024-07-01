@@ -26,18 +26,18 @@ var latencyBuckets = []float64{
 // Metrics has all the client metrics.
 type Metrics struct {
 	Connection     prometheus.CounterVec
-	Latency        prometheus.Histogram
+	Latency        prometheus.HistogramVec
 	SuccessCounter prometheus.CounterVec
 }
 
 // nolint: ireturn
-func newHistogram(histogramOpts prometheus.HistogramOpts) prometheus.Histogram {
-	ev := prometheus.NewHistogram(histogramOpts)
+func newHistogramVec(histogramOpts prometheus.HistogramOpts, labelNames []string) prometheus.HistogramVec {
+	ev := prometheus.NewHistogramVec(histogramOpts, labelNames)
 
 	if err := prometheus.Register(ev); err != nil {
 		var are prometheus.AlreadyRegisteredError
 		if ok := errors.As(err, &are); ok {
-			ev, ok = are.ExistingCollector.(prometheus.Histogram)
+			ev, ok = are.ExistingCollector.(*prometheus.HistogramVec)
 			if !ok {
 				panic("different metric type registration")
 			}
@@ -46,7 +46,7 @@ func newHistogram(histogramOpts prometheus.HistogramOpts) prometheus.Histogram {
 		}
 	}
 
-	return ev
+	return *ev
 }
 
 // nolint: ireturn
@@ -78,14 +78,14 @@ func NewMetrics(clinetName string) Metrics {
 			ConstLabels: nil,
 		}, []string{"type"}),
 		// nolint: exhaustruct
-		Latency: newHistogram(prometheus.HistogramOpts{
+		Latency: newHistogramVec(prometheus.HistogramOpts{
 			Namespace:   Namespace,
 			Subsystem:   clinetName,
 			Name:        "latency",
 			Help:        "from publish to consume duration in seconds",
 			ConstLabels: nil,
 			Buckets:     latencyBuckets,
-		}),
+		}, []string{"stream"}),
 		SuccessCounter: newCounterVec(prometheus.CounterOpts{
 			Namespace:   Namespace,
 			Subsystem:   clinetName,
