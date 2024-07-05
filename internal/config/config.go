@@ -43,7 +43,7 @@ func New(settingsPath string) Config {
 
 	// load configuration from file
 	if err := k.Load(file.Provider(settingsPath), yaml.Parser()); err != nil {
-		log.Printf("error loading config.yaml")
+		log.Printf("error loading config.yaml from: %s", settingsPath)
 	}
 
 	// load environment variables

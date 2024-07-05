@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/config"
@@ -19,8 +18,6 @@ var settingsPath string
 func Execute() {
 	pflag.StringVar(&settingsPath, "settings", "/opt/nats-blackbox-exporter/settings.yml", "Path to settings file")
 	pflag.Parse()
-
-	fmt.Println("settingsPath", settingsPath)
 
 	cfg := config.New(settingsPath)
 
