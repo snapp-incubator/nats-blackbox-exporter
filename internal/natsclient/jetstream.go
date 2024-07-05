@@ -34,7 +34,7 @@ func NewJetstream(config Config, logger *zap.Logger) *Jetstream {
 	j := &Jetstream{
 		config:  &config,
 		logger:  logger,
-		metrics: NewMetrics(config.ClientName),
+		metrics: NewMetrics(),
 	}
 
 	j.connect()
@@ -140,6 +140,7 @@ func (j *Jetstream) createSubscribe(subject string) chan *Message {
 }
 
 func (j *Jetstream) jetstreamSubscribe(h chan *Message, streamName string) {
+	clusterName := j.connection.ConnectedClusterName()
 	for msg := range h {
 		var publishTime time.Time
 		err := publishTime.UnmarshalBinary(msg.Data)
@@ -150,27 +151,30 @@ func (j *Jetstream) jetstreamSubscribe(h chan *Message, streamName string) {
 		}
 		latency := time.Since(publishTime).Seconds()
 		j.metrics.Latency.With(prometheus.Labels{
-			"stream": streamName,
+			"stream":  streamName,
+			"cluster": clusterName,
 		}).Observe(latency)
 		j.metrics.SuccessCounter.With(prometheus.Labels{
-			"type":   successfulSubscribe,
-			"stream": streamName,
+			"type":    successfulSubscribe,
+			"stream":  streamName,
+			"cluster": clusterName,
 		}).Add(1)
 		j.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 	}
 }
 
 func (j *Jetstream) jetstreamPublish(subject string, streamName string) {
+	clusterName := j.connection.ConnectedClusterName()
 	for {
 		t, err := time.Now().MarshalBinary()
 		if err != nil {
 			j.logger.Error("could not marshal current time.", zap.Error(err))
 		}
-
 		if ack, err := j.jetstream.Publish(subject, t); err != nil {
 			j.metrics.SuccessCounter.With(prometheus.Labels{
-				"type":   failedPublish,
-				"stream": streamName,
+				"type":    failedPublish,
+				"stream":  streamName,
+				"cluster": clusterName,
 			}).Add(1)
 			if err == nats.ErrTimeout {
 				j.logger.Error("Request timeout: No response received within the timeout period.")
@@ -181,8 +185,9 @@ func (j *Jetstream) jetstreamPublish(subject string, streamName string) {
 			}
 		} else {
 			j.metrics.SuccessCounter.With(prometheus.Labels{
-				"type":   successfulPublish,
-				"stream": streamName,
+				"type":    successfulPublish,
+				"stream":  streamName,
+				"cluster": clusterName,
 			}).Add(1)
 			j.logger.Info("receive ack", zap.String("stream", ack.Stream))
 		}

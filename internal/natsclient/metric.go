@@ -8,6 +8,7 @@ import (
 
 const (
 	Namespace = "nats_blackbox_exporter"
+	Subsystem = "client"
 )
 
 var latencyBuckets = []float64{
@@ -68,30 +69,30 @@ func newCounterVec(counterOpts prometheus.CounterOpts, labelNames []string) prom
 	return *ev
 }
 
-func NewMetrics(clinetName string) Metrics {
+func NewMetrics() Metrics {
 	return Metrics{
 		Connection: newCounterVec(prometheus.CounterOpts{
 			Namespace:   Namespace,
-			Subsystem:   clinetName,
+			Subsystem:   Subsystem,
 			Name:        "connection_errors_total",
 			Help:        "total number of disconnections and reconnections",
 			ConstLabels: nil,
-		}, []string{"type"}),
+		}, []string{"type", "cluster"}),
 		// nolint: exhaustruct
 		Latency: newHistogramVec(prometheus.HistogramOpts{
 			Namespace:   Namespace,
-			Subsystem:   clinetName,
+			Subsystem:   Subsystem,
 			Name:        "latency",
 			Help:        "from publish to consume duration in seconds",
 			ConstLabels: nil,
 			Buckets:     latencyBuckets,
-		}, []string{"stream"}),
+		}, []string{"stream", "cluster"}),
 		SuccessCounter: newCounterVec(prometheus.CounterOpts{
 			Namespace:   Namespace,
-			Subsystem:   clinetName,
+			Subsystem:   Subsystem,
 			Name:        "success_counter",
 			Help:        "publish and consume success rate",
 			ConstLabels: nil,
-		}, []string{"type", "stream"}),
+		}, []string{"type", "stream", "cluster"}),
 	}
 }
