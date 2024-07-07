@@ -23,4 +23,4 @@ WORKDIR /app/
 
 COPY --from=builder /nats-blackbox-exporter .
 
-ENTRYPOINT ["./nats-blackbox-exporter"]
+CMD [ "./nats-blackbox-exporter"]

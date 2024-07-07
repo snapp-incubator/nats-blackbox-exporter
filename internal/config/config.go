@@ -31,7 +31,7 @@ type (
 )
 
 // New reads configuration with koanf.
-func New() Config {
+func New(configPath string) Config {
 	var instance Config
 
 	k := koanf.New(".")
@@ -42,8 +42,8 @@ func New() Config {
 	}
 
 	// load configuration from file
-	if err := k.Load(file.Provider("setting/config.yaml"), yaml.Parser()); err != nil {
-		log.Printf("error loading config.yaml")
+	if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+		log.Printf("error loading config.yaml from: %s", configPath)
 	}
 
 	// load environment variables

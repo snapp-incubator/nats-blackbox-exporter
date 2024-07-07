@@ -7,13 +7,19 @@ import (
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // ExitFailure status code.
 const ExitFailure = 1
 
+var configPath string
+
 func Execute() {
-	cfg := config.New()
+	pflag.StringVar(&configPath, "configPath", "./config.yaml", "Path to config file")
+	pflag.Parse()
+
+	cfg := config.New(configPath)
 
 	logger := logger.New(cfg.Logger)
 
