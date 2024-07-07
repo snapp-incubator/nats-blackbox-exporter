@@ -26,7 +26,7 @@ You can deploy and use NATS Blackbox Exporter using Docker images or by building
 ### 1. Using Docker Image 📫
 You can use pre-built Docker images from GitHub Container Registry (GHCR):
 ```bash
-docker run -d -p 8080:8080 --name nats-blackbox-exporter -v ./setting/config.yaml:/app/setting/config.yaml:ro ghcr.io/snapp-incubator/nats-blackbox-exporter:<release-tag> -settings ./setting/config.yaml
+docker run -d -p 8080:8080 --name nats-blackbox-exporter -v ./setting/config.yaml:/app/setting/config.yaml:ro ghcr.io/snapp-incubator/nats-blackbox-exporter:<release-tag> --configPath ./setting/config.yaml
 ```
 and then pass environment variables as needed.
 
@@ -51,12 +51,12 @@ You can check the list of parameters with default values in the [config.example.
 
 2. **Configuration File:**
 
-   Use a `config.yaml` file to specify configuration parameters. You can specify the path to the config file using the `-settings` flag.
+   Use a `config.yaml` file to specify configuration parameters. You can specify the path to the config file using the `--configPath` flag.
 
    Example usage:
 
    ```bash
-   ./nats-blackbox-exporter -settings /path/to/config.yaml
+   ./nats-blackbox-exporter --configPath /path/to/config.yaml
    ```
 
    Replace `/path/to/config.yaml` with the actual path to your configuration file.

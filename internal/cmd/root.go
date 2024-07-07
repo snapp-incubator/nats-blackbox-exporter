@@ -13,13 +13,13 @@ import (
 // ExitFailure status code.
 const ExitFailure = 1
 
-var settingsPath string
+var configPath string
 
 func Execute() {
-	pflag.StringVar(&settingsPath, "settings", "/opt/nats-blackbox-exporter/settings.yml", "Path to settings file")
+	pflag.StringVar(&configPath, "configPath", "./config.yaml", "Path to config file")
 	pflag.Parse()
 
-	cfg := config.New(settingsPath)
+	cfg := config.New(configPath)
 
 	logger := logger.New(cfg.Logger)
 
