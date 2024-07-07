@@ -23,4 +23,5 @@ WORKDIR /app/
 
 COPY --from=builder /nats-blackbox-exporter .
 
-CMD [ "./nats-blackbox-exporter"]
+ENTRYPOINT ["./nats-blackbox-exporter"]
+CMD [ "--configPath=./setting/config.yaml" ]
