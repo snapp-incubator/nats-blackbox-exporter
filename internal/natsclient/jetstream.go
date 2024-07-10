@@ -13,7 +13,7 @@ var (
 	successfulSubscribe = "successful subscribe"
 	failedPublish       = "failed publish"
 	successfulPublish   = "successful publish"
-	subject_suffix      = "_blackbox_exporter"
+	subjectSuffix       = "_blackbox_exporter"
 )
 
 type Message struct {
@@ -82,7 +82,7 @@ func (j *Jetstream) UpdateOrCreateStream() {
 	}
 	for i, stream := range j.config.Streams {
 		if stream.Subject == "" {
-			j.config.Streams[i].Subject = stream.Name + subject_suffix
+			j.config.Streams[i].Subject = stream.Name + subjectSuffix
 		}
 
 		info, err := j.jetstream.StreamInfo(stream.Name)
