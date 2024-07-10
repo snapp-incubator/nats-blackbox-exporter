@@ -13,6 +13,7 @@ var (
 	successfulSubscribe = "successful subscribe"
 	failedPublish       = "failed publish"
 	successfulPublish   = "successful publish"
+	subject_suffix      = "_blackbox_exporter"
 )
 
 type Message struct {
@@ -73,12 +74,22 @@ func (j *Jetstream) createJetstreamContext() {
 }
 
 func (j *Jetstream) UpdateOrCreateStream() {
-	for _, stream := range j.config.Streams {
+	if j.config.AllExistingStreams {
+		streamNames := j.jetstream.StreamNames()
+		for stream := range streamNames {
+			j.config.Streams = append(j.config.Streams, Stream{Name: stream})
+		}
+	}
+	for i, stream := range j.config.Streams {
+		if stream.Subject == "" {
+			j.config.Streams[i].Subject = stream.Name + subject_suffix
+		}
+
 		info, err := j.jetstream.StreamInfo(stream.Name)
 		if err == nil {
-			j.updateStream(stream, info)
+			j.updateStream(j.config.Streams[i], info)
 		} else if err == nats.ErrStreamNotFound && j.config.NewStreamAllow {
-			j.createStream(stream)
+			j.createStream(j.config.Streams[i])
 		} else {
 			j.logger.Panic("could not add subject", zap.Error(err))
 		}
