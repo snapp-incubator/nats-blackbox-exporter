@@ -91,7 +91,7 @@ func (j *Jetstream) UpdateOrCreateStream() {
 		} else if err == nats.ErrStreamNotFound && j.config.NewStreamAllow {
 			j.createStream(j.config.Streams[i])
 		} else {
-			j.logger.Panic("could not add subject", zap.Error(err))
+			j.logger.Error("could not add subject", zap.String("stream", stream.Name), zap.Error(err))
 		}
 	}
 }
@@ -104,7 +104,7 @@ func (j *Jetstream) updateStream(stream Stream, info *nats.StreamInfo) {
 		Subjects: subjects,
 	})
 	if err != nil {
-		j.logger.Panic("could not add subject to existing stream", zap.Error(err))
+		j.logger.Error("could not add subject to existing stream", zap.String("stream", stream.Name), zap.Error(err))
 	}
 	j.logger.Info("stream updated")
 }
@@ -115,12 +115,15 @@ func (j *Jetstream) createStream(stream Stream) {
 		Subjects: []string{stream.Subject},
 	})
 	if err != nil {
-		j.logger.Panic("could not add stream", zap.Error(err))
+		j.logger.Error("could not add stream", zap.String("stream", stream.Name), zap.Error(err))
 	}
 	j.logger.Info("add new stream")
 }
 
 func (j *Jetstream) StartBlackboxTest() {
+	if j.config.Streams == nil {
+		j.logger.Panic("at least one stream is required.")
+	}
 	for _, stream := range j.config.Streams {
 		messageChannel := j.createSubscribe(stream.Subject)
 		go j.jetstreamPublish(stream.Subject, stream.Name)
