@@ -13,6 +13,7 @@ var (
 	successfulSubscribe = "successful subscribe"
 	failedPublish       = "failed publish"
 	successfulPublish   = "successful publish"
+	subjectSuffix       = "_blackbox_exporter"
 )
 
 type Message struct {
@@ -73,14 +74,24 @@ func (j *Jetstream) createJetstreamContext() {
 }
 
 func (j *Jetstream) UpdateOrCreateStream() {
-	for _, stream := range j.config.Streams {
+	if j.config.AllExistingStreams {
+		streamNames := j.jetstream.StreamNames()
+		for stream := range streamNames {
+			j.config.Streams = append(j.config.Streams, Stream{Name: stream})
+		}
+	}
+	for i, stream := range j.config.Streams {
+		if stream.Subject == "" {
+			j.config.Streams[i].Subject = stream.Name + subjectSuffix
+		}
+
 		info, err := j.jetstream.StreamInfo(stream.Name)
 		if err == nil {
-			j.updateStream(stream, info)
+			j.updateStream(j.config.Streams[i], info)
 		} else if err == nats.ErrStreamNotFound && j.config.NewStreamAllow {
-			j.createStream(stream)
+			j.createStream(j.config.Streams[i])
 		} else {
-			j.logger.Panic("could not add subject", zap.Error(err))
+			j.logger.Error("could not add subject", zap.String("stream", stream.Name), zap.Error(err))
 		}
 	}
 }
@@ -93,7 +104,7 @@ func (j *Jetstream) updateStream(stream Stream, info *nats.StreamInfo) {
 		Subjects: subjects,
 	})
 	if err != nil {
-		j.logger.Panic("could not add subject to existing stream", zap.Error(err))
+		j.logger.Error("could not add subject to existing stream", zap.String("stream", stream.Name), zap.Error(err))
 	}
 	j.logger.Info("stream updated")
 }
@@ -104,12 +115,15 @@ func (j *Jetstream) createStream(stream Stream) {
 		Subjects: []string{stream.Subject},
 	})
 	if err != nil {
-		j.logger.Panic("could not add stream", zap.Error(err))
+		j.logger.Error("could not add stream", zap.String("stream", stream.Name), zap.Error(err))
 	}
 	j.logger.Info("add new stream")
 }
 
 func (j *Jetstream) StartBlackboxTest() {
+	if j.config.Streams == nil {
+		j.logger.Panic("at least one stream is required.")
+	}
 	for _, stream := range j.config.Streams {
 		messageChannel := j.createSubscribe(stream.Subject)
 		go j.jetstreamPublish(stream.Subject, stream.Name)
