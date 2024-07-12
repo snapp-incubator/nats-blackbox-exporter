@@ -3,7 +3,7 @@ logger:
 
 nats:
   new_stream_allow: true
-  stream:         
+  streams:         
     name: "stream"
     subject: "test"   # optional
   url: "localhost:4222"

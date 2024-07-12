@@ -4,7 +4,7 @@ import "time"
 
 type Config struct {
 	NewStreamAllow         bool          `json:"new_stream_allow" koanf:"new_stream_allow"`
-	Streams                []Stream      `json:"stream,omitempty"            koanf:"stream"`
+	Streams                []Stream      `json:"streams,omitempty"            koanf:"streams"`
 	URL                    string        `json:"url,omitempty"            koanf:"url"`
 	PublishInterval        time.Duration `json:"publish_interval" koanf:"publish_interval"`
 	RequestTimeout         time.Duration `json:"request_timeout" koanf:"request_timeout"`
