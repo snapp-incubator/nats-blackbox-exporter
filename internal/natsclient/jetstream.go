@@ -1,10 +1,13 @@
 package natsclient
 
 import (
-	"slices"
+	"context"
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -21,21 +24,30 @@ type Message struct {
 	Data    []byte
 }
 
+type CreatedStream struct {
+	name         string
+	subject      string
+	streamClient jetstream.Stream
+}
+
 // Jetstream represents the NATS core handler
-type Jetstream struct {
-	connection *nats.Conn
-	jetstream  nats.JetStreamContext
-	config     *Config
-	logger     *zap.Logger
-	metrics    Metrics
+type JetstreamClient struct {
+	connection     *nats.Conn
+	jetstream      jetstream.JetStream
+	config         *Config
+	logger         *zap.Logger
+	metrics        Metrics
+	ctx            context.Context
+	createdStreams []CreatedStream
 }
 
 // NewJetstream initializes NATS JetStream connection
-func NewJetstream(config Config, logger *zap.Logger) *Jetstream {
-	j := &Jetstream{
+func NewJetstream(config Config, logger *zap.Logger, ctx *context.Context) *JetstreamClient {
+	j := &JetstreamClient{
 		config:  &config,
 		logger:  logger,
 		metrics: NewMetrics(),
+		ctx:     *ctx,
 	}
 
 	j.connect()
@@ -47,7 +59,7 @@ func NewJetstream(config Config, logger *zap.Logger) *Jetstream {
 	return j
 }
 
-func (j *Jetstream) connect() {
+func (j *JetstreamClient) connect() {
 	var err error
 	j.connection, err = nats.Connect(j.config.URL)
 	if err != nil {
@@ -65,99 +77,82 @@ func (j *Jetstream) connect() {
 	})
 }
 
-func (j *Jetstream) createJetstreamContext() {
+func (j *JetstreamClient) createJetstreamContext() {
 	var err error
-	j.jetstream, err = j.connection.JetStream()
+	j.jetstream, err = jetstream.New(j.connection)
 	if err != nil {
 		j.logger.Panic("could not connect to jetstream", zap.Error(err))
 	}
 }
 
-func (j *Jetstream) UpdateOrCreateStream() {
-	if j.config.AllExistingStreams {
-		streamNames := j.jetstream.StreamNames()
-		for stream := range streamNames {
-			j.config.Streams = append(j.config.Streams, Stream{Name: stream})
-		}
-	}
-	for i, stream := range j.config.Streams {
-		if stream.Subject == "" {
-			j.config.Streams[i].Subject = stream.Name + subjectSuffix
+func (j *JetstreamClient) UpdateOrCreateStream() {
+	for _, stream := range j.config.StreamsConfig {
+		name := stream.Name
+		subject := stream.Subject
+		if subject == "" {
+			subject = stream.Name + subjectSuffix
 		}
 
-		info, err := j.jetstream.StreamInfo(stream.Name)
+		str, err := j.jetstream.CreateOrUpdateStream(j.ctx, jetstream.StreamConfig{
+			Name:     name,
+			Subjects: []string{subject},
+		})
 		if err == nil {
-			j.updateStream(j.config.Streams[i], info)
-		} else if err == nats.ErrStreamNotFound && j.config.NewStreamAllow {
-			j.createStream(j.config.Streams[i])
+			j.createdStreams = append(j.createdStreams, CreatedStream{
+				name:         name,
+				subject:      subject,
+				streamClient: str,
+			})
+			j.logger.Info("create or update stream", zap.String("stream", stream.Name))
 		} else {
 			j.logger.Error("could not add subject", zap.String("stream", stream.Name), zap.Error(err))
 		}
 	}
 }
-func (j *Jetstream) updateStream(stream Stream, info *nats.StreamInfo) {
-	subjects := append(info.Config.Subjects, stream.Subject)
-	slices.Sort(subjects)
-	subjects = slices.Compact(subjects)
-	_, err := j.jetstream.UpdateStream(&nats.StreamConfig{
-		Name:     stream.Name,
-		Subjects: subjects,
-	})
-	if err != nil {
-		j.logger.Error("could not add subject to existing stream", zap.String("stream", stream.Name), zap.Error(err))
-	}
-	j.logger.Info("stream updated")
-}
 
-func (j *Jetstream) createStream(stream Stream) {
-	_, err := j.jetstream.AddStream(&nats.StreamConfig{
-		Name:     stream.Name,
-		Subjects: []string{stream.Subject},
-	})
-	if err != nil {
-		j.logger.Error("could not add stream", zap.String("stream", stream.Name), zap.Error(err))
-	}
-	j.logger.Info("add new stream")
-}
-
-func (j *Jetstream) StartBlackboxTest() {
-	if j.config.Streams == nil {
+func (j *JetstreamClient) StartBlackboxTest() {
+	if j.createdStreams == nil {
 		j.logger.Panic("at least one stream is required.")
 	}
-	for _, stream := range j.config.Streams {
-		messageChannel := j.createSubscribe(stream.Subject)
-		go j.jetstreamPublish(stream.Subject, stream.Name)
-		go j.jetstreamSubscribe(messageChannel, stream.Name)
+	for _, stream := range j.createdStreams {
+		consumer := j.createConsumer(stream.streamClient, stream.subject)
+		go j.jetstreamPublish(stream.subject, stream.name)
+		go j.jetstreamSubscribe(consumer, stream.name)
 	}
 }
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages
-func (j *Jetstream) createSubscribe(subject string) chan *Message {
+func (j *JetstreamClient) createConsumer(str jetstream.Stream, subject string) jetstream.Consumer {
 
-	messageHandler, h := j.messageHandlerFactoryJetstream()
-	_, err := j.jetstream.Subscribe(
-		subject,
-		messageHandler,
-		nats.DeliverNew(),
-		nats.ReplayInstant(),
-		nats.AckExplicit(),
-		nats.MaxAckPending(j.config.MaxPubAcksInflight),
-	)
+	c, err := str.CreateOrUpdateConsumer(j.ctx, jetstream.ConsumerConfig{
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		FilterSubject: subject,
+		DeliverPolicy: jetstream.DeliverNewPolicy,
+	})
 	if err != nil {
 		j.logger.Panic("could not Subscribe", zap.Error(err))
 	} else {
-		j.logger.Info("Subscribed to %s successfully", zap.String("subject", subject))
+		j.logger.Info("Subscribed to %s successfully", zap.String("stream", str.CachedInfo().Config.Name))
 	}
 
-	return h
-
+	return c
 }
 
-func (j *Jetstream) jetstreamSubscribe(h chan *Message, streamName string) {
+func (j *JetstreamClient) jetstreamSubscribe(c jetstream.Consumer, streamName string) {
+	messageHandler, h := j.messageHandlerFactoryJetstream()
+
+	cc, err := c.Consume(messageHandler, jetstream.ConsumeErrHandler(func(consumeCtx jetstream.ConsumeContext, err error) {
+		fmt.Println(err)
+	}))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cc.Stop()
+
 	clusterName := j.connection.ConnectedClusterName()
 	for msg := range h {
 		var publishTime time.Time
-		err := publishTime.UnmarshalBinary(msg.Data)
+		err = publishTime.UnmarshalBinary(msg.Data)
 		if err != nil {
 			j.logger.Error("unable to unmarshal binary data for publishTime.")
 			j.logger.Info("received message but could not calculate latency due to unmarshalling error.", zap.String("subject", msg.Subject))
@@ -177,14 +172,14 @@ func (j *Jetstream) jetstreamSubscribe(h chan *Message, streamName string) {
 	}
 }
 
-func (j *Jetstream) jetstreamPublish(subject string, streamName string) {
+func (j *JetstreamClient) jetstreamPublish(subject string, streamName string) {
 	clusterName := j.connection.ConnectedClusterName()
 	for {
 		t, err := time.Now().MarshalBinary()
 		if err != nil {
 			j.logger.Error("could not marshal current time.", zap.Error(err))
 		}
-		if ack, err := j.jetstream.Publish(subject, t); err != nil {
+		if ack, err := j.jetstream.Publish(j.ctx, subject, t); err != nil {
 			j.metrics.SuccessCounter.With(prometheus.Labels{
 				"type":    failedPublish,
 				"stream":  streamName,
@@ -210,12 +205,12 @@ func (j *Jetstream) jetstreamPublish(subject string, streamName string) {
 	}
 }
 
-func (j *Jetstream) messageHandlerFactoryJetstream() (nats.MsgHandler, chan *Message) {
+func (j *JetstreamClient) messageHandlerFactoryJetstream() (jetstream.MessageHandler, chan *Message) {
 	ch := make(chan *Message)
-	return func(msg *nats.Msg) {
+	return func(msg jetstream.Msg) {
 		ch <- &Message{
-			Subject: msg.Subject,
-			Data:    msg.Data,
+			Subject: msg.Subject(),
+			Data:    msg.Data(),
 		}
 		err := msg.Ack()
 		if err != nil {
@@ -225,7 +220,7 @@ func (j *Jetstream) messageHandlerFactoryJetstream() (nats.MsgHandler, chan *Mes
 }
 
 // Close closes NATS connection
-func (j *Jetstream) Close() {
+func (j *JetstreamClient) Close() {
 	if err := j.connection.FlushTimeout(j.config.FlushTimeout); err != nil {
 		j.logger.Error("could not flush", zap.Error(err))
 	}
