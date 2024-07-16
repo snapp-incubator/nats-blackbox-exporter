@@ -2,8 +2,6 @@ package natsclient
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"slices"
 	"time"
 
@@ -177,11 +175,9 @@ func (j *JetstreamClient) createConsumer(str jetstream.Stream, subject string) j
 func (j *JetstreamClient) jetstreamSubscribe(c jetstream.Consumer, streamName string) {
 	messageHandler, h := j.messageHandlerFactoryJetstream()
 
-	cc, err := c.Consume(messageHandler, jetstream.ConsumeErrHandler(func(consumeCtx jetstream.ConsumeContext, err error) {
-		fmt.Println(err)
-	}))
+	cc, err := c.Consume(messageHandler)
 	if err != nil {
-		log.Fatal(err)
+		j.logger.Fatal("unable to consume messages", zap.Error(err))
 	}
 	defer cc.Stop()
 
