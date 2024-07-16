@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -93,21 +94,56 @@ func (j *JetstreamClient) UpdateOrCreateStream() {
 			subject = stream.Name + subjectSuffix
 		}
 
-		str, err := j.jetstream.CreateOrUpdateStream(j.ctx, jetstream.StreamConfig{
-			Name:     name,
-			Subjects: []string{subject},
-		})
+		var str jetstream.Stream
+		s, err := j.jetstream.Stream(j.ctx, name)
 		if err == nil {
-			j.createdStreams = append(j.createdStreams, CreatedStream{
-				name:         name,
-				subject:      subject,
-				streamClient: str,
-			})
-			j.logger.Info("create or update stream", zap.String("stream", stream.Name))
+			info, _ := s.Info(j.ctx)
+			str, err = j.updateStream(name, subject, info.Config)
+		} else if err == nats.ErrStreamNotFound {
+			str, err = j.createStream(name, subject)
 		} else {
 			j.logger.Error("could not add subject", zap.String("stream", stream.Name), zap.Error(err))
+			continue
 		}
+
+		if err != nil {
+			j.logger.Error("could not add subject", zap.String("stream", stream.Name), zap.Error(err))
+			continue
+		}
+
+		j.createdStreams = append(j.createdStreams, CreatedStream{
+			name:         name,
+			subject:      subject,
+			streamClient: str,
+		})
+		j.logger.Info("create or update stream", zap.String("stream", stream.Name))
 	}
+}
+
+func (j *JetstreamClient) updateStream(name string, subject string, config jetstream.StreamConfig) (jetstream.Stream, error) {
+	subjects := append(config.Subjects, subject)
+	slices.Sort(subjects)
+	config.Subjects = slices.Compact(subjects)
+	str, err := j.jetstream.UpdateStream(j.ctx, config)
+	if err != nil {
+		j.logger.Error("could not add subject to existing stream", zap.String("stream", name), zap.Error(err))
+		return nil, err
+	}
+	j.logger.Info("stream updated")
+	return str, nil
+}
+
+func (j *JetstreamClient) createStream(name string, subject string) (jetstream.Stream, error) {
+	str, err := j.jetstream.CreateStream(j.ctx, jetstream.StreamConfig{
+		Name:     name,
+		Subjects: []string{subject},
+	})
+	if err != nil {
+		j.logger.Error("could not add stream", zap.String("stream", name), zap.Error(err))
+		return nil, err
+	}
+	j.logger.Info("add new stream")
+	return str, nil
 }
 
 func (j *JetstreamClient) StartBlackboxTest() {
