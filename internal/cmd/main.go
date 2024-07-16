@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,7 +14,10 @@ import (
 func main(cfg config.Config, logger *zap.Logger) {
 	natsConfig := cfg.NATS
 
-	jetstreamClient := natsclient.NewJetstream(natsConfig, logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	jetstreamClient := natsclient.NewJetstream(natsConfig, logger, &ctx)
 	jetstreamClient.StartBlackboxTest()
 
 	sig := make(chan os.Signal, 1)
