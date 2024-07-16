@@ -16,8 +16,6 @@ func Default() Config {
 			Level: "debug",
 		},
 		NATS: natsclient.Config{
-			AllExistingStreams: false,
-			NewStreamAllow:     true,
 			StreamsConfig: []natsclient.StreamConfig{{
 				Name:    "test",
 				Subject: "test",
@@ -29,7 +27,6 @@ func Default() Config {
 			MaxPubAcksInflight:     1000,
 			QueueSubscriptionGroup: "group",
 			FlushTimeout:           2 * time.Second,
-			ClientName:             "localhost",
 		},
 		Metric: metric.Config{
 			Server:  metric.Server{Address: ":8080"},

@@ -2,7 +2,6 @@ logger:
   level: "debug"
 
 nats:
-  new_stream_allow: true
   streams:         
     name: "stream"
     subject: "test"   # optional
