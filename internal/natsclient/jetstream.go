@@ -98,11 +98,8 @@ func (j *Jetstream) UpdateOrCreateStream() {
 func (j *Jetstream) updateStream(stream Stream, info *nats.StreamInfo) {
 	subjects := append(info.Config.Subjects, stream.Subject)
 	slices.Sort(subjects)
-	subjects = slices.Compact(subjects)
-	_, err := j.jetstream.UpdateStream(&nats.StreamConfig{
-		Name:     stream.Name,
-		Subjects: subjects,
-	})
+	info.Config.Subjects = slices.Compact(subjects)
+	_, err := j.jetstream.UpdateStream(&info.Config)
 	if err != nil {
 		j.logger.Error("could not add subject to existing stream", zap.String("stream", stream.Name), zap.Error(err))
 	}
