@@ -99,7 +99,7 @@ func (j *JetstreamClient) UpdateOrCreateStream() {
 		if err == nil {
 			info, _ := s.Info(j.ctx)
 			str, err = j.updateStream(name, subject, info.Config)
-		} else if err == nats.ErrStreamNotFound {
+		} else if err == jetstream.ErrStreamNotFound {
 			str, err = j.createStream(name, subject)
 		} else {
 			j.logger.Error("could not add subject", zap.String("stream", stream.Name), zap.Error(err))
