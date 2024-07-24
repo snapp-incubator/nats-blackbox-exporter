@@ -39,7 +39,13 @@ var latencyBuckets = []float64{
 	0.05,
 	0.065,
 	0.07,
-	0.075,
+	0.08,
+	0.09,
+	0.1,
+	2,
+	3,
+	5,
+	10,
 }
 
 // Metrics has all the client metrics.
