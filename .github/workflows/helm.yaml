@@ -1,0 +1,58 @@
+---
+name: helm
+on:
+  - push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: set up helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.13.0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.7
+
+      - name: set up chart-testing
+        uses: helm/chart-testing-action@v2.6.1
+
+      - name: run chart-testing (lint)
+        run: ct lint --all
+
+      - name: create kind cluster
+        uses: helm/kind-action@v1.10.0
+
+      - name: run chart-testing (install)
+        run: ct install --all
+
+  release:
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: set up helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.13.0
+
+      - name: login to github container registry using helm
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io/snapp-incubator/nats-blackbox-exporter --username ${{ github.repository_owner }} --password-stdin
+
+      - name: package nats-blackbox-exporter helm chart
+        run: |
+          version=${{ github.ref_name }}
+          helm package --version "${version##v}" --app-version "${version}" ./charts/nats-blackbox-exporter
+
+      - name: publish nats-blackbox-exporter chart to github container registry
+        run: |
+          version=${{ github.ref_name }}
+          helm push "nats-blackbox-exporter-${version##v}".tgz oci://ghcr.io/snapp-incubator/mqtt-blackbox-exporter-chart
