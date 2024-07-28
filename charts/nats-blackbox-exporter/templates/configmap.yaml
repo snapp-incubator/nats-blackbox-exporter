@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "blackbox-exporter.fullname" . }}
+data:
+  config.yaml: |
+    logger:
+      level: {{ .Values.logLevel | quote}}
+    nats:
+      streams: {{ .Values.nats.streams | toYaml | nindent 8 }}
+      url: nats://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:4222
+      publish_interval: {{ .Values.nats.publish_interval | quote }}
+      request_timeout: {{ .Values.nats.request_timeout | quote }}
+      max_pub_acks_inflight: {{ .Values.nats.rmax_pub_acks_inflight | quote }}
+      queue_subscription_group: {{ .Values.nats.queue_subscription_group | quote }}
+      flush_timeout: {{ .Values.nats.flush_timeout | quote }}
+      new_stream_allow: {{ .Values.nats.new_stream_allow }}
+    metric:
+      server:
+        address: ":8080"
+      enabled: true

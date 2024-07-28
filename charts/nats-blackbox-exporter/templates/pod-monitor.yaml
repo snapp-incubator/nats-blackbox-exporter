@@ -1,0 +1,12 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "blackbox-exporter.fullname" . }}
+  labels:
+    {{- include "blackbox-exporter.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "blackbox-exporter.selectorLabels" . | nindent 6 }}
+  podMetricsEndpoints:
+  - port: metrics
