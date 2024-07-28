@@ -55,4 +55,4 @@ jobs:
       - name: publish nats-blackbox-exporter chart to github container registry
         run: |
           version=${{ github.ref_name }}
-          helm push "nats-blackbox-exporter-${version##v}".tgz oci://ghcr.io/snapp-incubator/mqtt-blackbox-exporter-chart
+          helm push "nats-blackbox-exporter-${version##v}".tgz oci://ghcr.io/snapp-incubator/nats-blackbox-exporter-chart
