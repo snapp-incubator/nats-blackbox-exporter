@@ -2,5 +2,13 @@ apiVersion: v2
 name: nats-blackbox-exporter
 description: A Helm chart for SnappCloud/Platform NATS BlackBox Exporter
 type: application
+maintainers:
+  - name: kianaza
+    url: https://github.com/kianaza
+  - name: sinamna
+    url: https://github.com/sinamna
+  - name: 1995parham
+    url: https://github.com/1995parham
+    email: parham.alvani@gmail.com
 version: 0.0.0
 appVersion: latest
