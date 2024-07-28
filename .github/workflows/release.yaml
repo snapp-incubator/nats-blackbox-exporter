@@ -30,10 +30,7 @@ jobs:
         with:
           file: "Dockerfile"
           context: .
-          platforms:
-            - linux/amd6
-            - linux/arm64
-            - darwin/arm64
+          platforms: linux/amd6, linux/arm64, darwin/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
