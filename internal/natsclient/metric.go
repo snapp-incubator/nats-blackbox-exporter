@@ -11,43 +11,6 @@ const (
 	Subsystem = "client"
 )
 
-var latencyBuckets = []float64{
-	0.001,
-	0.0015,
-	0.002,
-	0.0025,
-	0.003,
-	0.0035,
-	0.004,
-	0.0045,
-	0.005,
-	0.0055,
-	0.006,
-	0.0065,
-	0.007,
-	0.0075,
-	0.008,
-	0.0085,
-	0.009,
-	0.0095,
-	0.01,
-	0.015,
-	0.02,
-	0.025,
-	0.03,
-	0.045,
-	0.05,
-	0.065,
-	0.07,
-	0.08,
-	0.09,
-	0.1,
-	0.2,
-	0.3,
-	0.5,
-	1,
-}
-
 // Metrics has all the client metrics.
 type Metrics struct {
 	Connection     prometheus.CounterVec
@@ -93,7 +56,45 @@ func newCounterVec(counterOpts prometheus.CounterOpts, labelNames []string) prom
 	return *ev
 }
 
+// nolint: funlen
 func NewMetrics() Metrics {
+	latencyBuckets := []float64{
+		0.001,
+		0.0015,
+		0.002,
+		0.0025,
+		0.003,
+		0.0035,
+		0.004,
+		0.0045,
+		0.005,
+		0.0055,
+		0.006,
+		0.0065,
+		0.007,
+		0.0075,
+		0.008,
+		0.0085,
+		0.009,
+		0.0095,
+		0.01,
+		0.015,
+		0.02,
+		0.025,
+		0.03,
+		0.045,
+		0.05,
+		0.065,
+		0.07,
+		0.08,
+		0.09,
+		0.1,
+		0.2,
+		0.3,
+		0.5,
+		1,
+	}
+
 	return Metrics{
 		Connection: newCounterVec(prometheus.CounterOpts{
 			Namespace:   Namespace,

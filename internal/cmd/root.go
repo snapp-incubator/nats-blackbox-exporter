@@ -13,9 +13,9 @@ import (
 // ExitFailure status code.
 const ExitFailure = 1
 
-var configPath string
-
 func Execute() {
+	var configPath string
+
 	pflag.StringVar(&configPath, "configPath", "./config.yaml", "Path to config file")
 	pflag.Parse()
 

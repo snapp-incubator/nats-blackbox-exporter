@@ -18,10 +18,11 @@ func Default() Config {
 		NATS: natsclient.Config{
 			AllExistingStreams: false,
 			NewStreamAllow:     true,
-			Streams: []natsclient.Stream{{
-				Name:    "test",
-				Subject: "test",
-			},
+			Streams: []natsclient.Stream{
+				{
+					Name:    "test",
+					Subject: "test",
+				},
 			},
 			URL:                    "localhost:4222",
 			PublishInterval:        2 * time.Second,
