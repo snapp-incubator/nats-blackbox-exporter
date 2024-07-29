@@ -8,7 +8,7 @@ data:
       level: {{ .Values.logLevel | quote}}
     nats:
       streams: {{ .Values.nats.streams | toYaml | nindent 8 }}
-      url: nats://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:4222
+      url: {{ tpl (.Values.nats.url | toString) $ }}
       publish_interval: {{ .Values.nats.publish_interval | quote }}
       request_timeout: {{ .Values.nats.request_timeout | quote }}
       max_pub_acks_inflight: {{ .Values.nats.rmax_pub_acks_inflight | quote }}
@@ -17,5 +17,5 @@ data:
       new_stream_allow: {{ .Values.nats.new_stream_allow }}
     metric:
       server:
-        address: ":8080"
+        address: ":{{ .Values.metrics.port | default 8080 }}"
       enabled: true
