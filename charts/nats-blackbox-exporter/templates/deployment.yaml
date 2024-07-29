@@ -31,7 +31,7 @@ spec:
         - name: {{ .Chart.Name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default (trimPrefix "v" .Chart.AppVersion) }}"
           args:
             - --configPath
             - /app/setting/config.yaml
