@@ -11,9 +11,7 @@ import (
 )
 
 func main(cfg config.Config, logger *zap.Logger) {
-	natsConfig := cfg.NATS
-
-	jetstreamClient := natsclient.NewJetstream(natsConfig, logger)
+	jetstreamClient := natsclient.NewJetstream(cfg.NATS, logger)
 	jetstreamClient.StartBlackboxTest()
 
 	sig := make(chan os.Signal, 1)
