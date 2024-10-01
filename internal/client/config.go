@@ -1,9 +1,9 @@
-package natsclient
+package client
 
 import "time"
 
 type Config struct {
-	AllExistingStreams     bool          `json:"all_existing_streams"     koanf:"all_existing_streams"`
+	IsJetstream            bool          `json:"is_jetstream"             koanf:"is_jetstream"`
 	NewStreamAllow         bool          `json:"new_stream_allow"         koanf:"new_stream_allow"`
 	Streams                []Stream      `json:"streams,omitempty"        koanf:"streams"`
 	URL                    string        `json:"url,omitempty"            koanf:"url"`

@@ -5,13 +5,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/config"
-	"github.com/snapp-incubator/nats-blackbox-exporter/internal/natsclient"
 	"go.uber.org/zap"
 )
 
 func main(cfg config.Config, logger *zap.Logger) {
-	jetstreamClient := natsclient.NewJetstream(cfg.NATS, logger)
+	jetstreamClient := client.New(cfg.NATS, logger)
 	jetstreamClient.StartBlackboxTest()
 
 	sig := make(chan os.Signal, 1)

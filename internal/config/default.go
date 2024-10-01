@@ -3,9 +3,9 @@ package config
 import (
 	"time"
 
+	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
-	"github.com/snapp-incubator/nats-blackbox-exporter/internal/natsclient"
 )
 
 // Default return default configuration.
@@ -15,10 +15,10 @@ func Default() Config {
 		Logger: logger.Config{
 			Level: "debug",
 		},
-		NATS: natsclient.Config{
-			AllExistingStreams: false,
-			NewStreamAllow:     true,
-			Streams: []natsclient.Stream{
+		NATS: client.Config{
+			IsJetstream:    true,
+			NewStreamAllow: true,
+			Streams: []client.Stream{
 				{
 					Name:    "test",
 					Subject: "test",
