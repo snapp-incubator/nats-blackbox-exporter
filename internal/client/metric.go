@@ -115,7 +115,7 @@ func NewMetrics(conn string) Metrics {
 				"conn": conn,
 			},
 			Buckets: latencyBuckets,
-		}, []string{"stream", "cluster"}),
+		}, []string{"stream", "cluster", "subject"}),
 		SuccessCounter: newCounterVec(prometheus.CounterOpts{
 			Namespace: Namespace,
 			Subsystem: Subsystem,
@@ -124,6 +124,6 @@ func NewMetrics(conn string) Metrics {
 			ConstLabels: prometheus.Labels{
 				"conn": conn,
 			},
-		}, []string{"type", "stream", "cluster"}),
+		}, []string{"type", "stream", "cluster", "subject"}),
 	}
 }
