@@ -7,6 +7,7 @@ data:
     logger:
       level: {{ .Values.logLevel | quote}}
     nats:
+      is_jetstream: {{ .Values.nats.is_jetstream }}
       streams: {{ .Values.nats.streams | toYaml | nindent 8 }}
       url: {{ tpl (.Values.nats.url | toString) $ }}
       publish_interval: {{ .Values.nats.publish_interval | quote }}
