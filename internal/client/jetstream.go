@@ -158,7 +158,7 @@ func (client *Client) createSubscribe(ctx context.Context, subject string) <-cha
 	con, err := client.jetstream.CreateOrUpdateConsumer(
 		ctx,
 		subject,
-		jetstream.ConsumerConfig{
+		jetstream.ConsumerConfig{ // nolint: exhaustruct
 			DeliverPolicy: jetstream.DeliverNewPolicy,
 			ReplayPolicy:  jetstream.ReplayInstantPolicy,
 			AckPolicy:     jetstream.AckExplicitPolicy,
