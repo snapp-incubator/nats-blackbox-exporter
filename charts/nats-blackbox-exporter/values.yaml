@@ -49,6 +49,7 @@ podMonitor:
   enabled: true
 
 nats:
+  is_jetstream: true
   streams:
     - name: "stream"
       subject: "test"
