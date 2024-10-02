@@ -57,7 +57,7 @@ func newCounterVec(counterOpts prometheus.CounterOpts, labelNames []string) prom
 }
 
 // nolint: funlen
-func NewMetrics() Metrics {
+func NewMetrics(conn string) Metrics {
 	latencyBuckets := []float64{
 		0.001,
 		0.0015,
@@ -97,27 +97,33 @@ func NewMetrics() Metrics {
 
 	return Metrics{
 		Connection: newCounterVec(prometheus.CounterOpts{
-			Namespace:   Namespace,
-			Subsystem:   Subsystem,
-			Name:        "connection_errors_total",
-			Help:        "total number of disconnections and reconnections",
-			ConstLabels: nil,
+			Namespace: Namespace,
+			Subsystem: Subsystem,
+			Name:      "connection_errors_total",
+			Help:      "total number of disconnections and reconnections",
+			ConstLabels: prometheus.Labels{
+				"conn": conn,
+			},
 		}, []string{"type", "cluster"}),
 		// nolint: exhaustruct
 		Latency: newHistogramVec(prometheus.HistogramOpts{
-			Namespace:   Namespace,
-			Subsystem:   Subsystem,
-			Name:        "latency",
-			Help:        "from publish to consume duration in seconds",
-			ConstLabels: nil,
-			Buckets:     latencyBuckets,
+			Namespace: Namespace,
+			Subsystem: Subsystem,
+			Name:      "latency",
+			Help:      "from publish to consume duration in seconds",
+			ConstLabels: prometheus.Labels{
+				"conn": conn,
+			},
+			Buckets: latencyBuckets,
 		}, []string{"stream", "cluster"}),
 		SuccessCounter: newCounterVec(prometheus.CounterOpts{
-			Namespace:   Namespace,
-			Subsystem:   Subsystem,
-			Name:        "success_counter",
-			Help:        "publish and consume success rate",
-			ConstLabels: nil,
+			Namespace: Namespace,
+			Subsystem: Subsystem,
+			Name:      "success_counter",
+			Help:      "publish and consume success rate",
+			ConstLabels: prometheus.Labels{
+				"conn": conn,
+			},
 		}, []string{"type", "stream", "cluster"}),
 	}
 }

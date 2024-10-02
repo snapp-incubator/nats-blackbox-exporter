@@ -37,6 +37,11 @@ type Client struct {
 
 // New initializes NATS connection.
 func New(config Config, logger *zap.Logger) *Client {
+	conn := "jetstream"
+	if !config.IsJetstream {
+		conn = "core"
+	}
+
 	client := &Client{
 		jetstream:  nil,
 		connection: nil,
@@ -44,7 +49,7 @@ func New(config Config, logger *zap.Logger) *Client {
 		config: config,
 
 		logger:  logger,
-		metrics: NewMetrics(),
+		metrics: NewMetrics(conn),
 	}
 
 	client.connect()
@@ -97,10 +102,12 @@ func (client *Client) UpdateOrCreateStream(ctx context.Context) {
 			info, err := stream.Info(ctx)
 			if err == nil {
 				client.updateStream(ctx, client.config.Streams[i], info)
+
 				return
 			}
 		} else if errors.Is(err, jetstream.ErrStreamNotFound) && client.config.NewStreamAllow {
 			client.createStream(ctx, client.config.Streams[i])
+
 			return
 		}
 
@@ -147,6 +154,11 @@ func (client *Client) StartBlackboxTest(ctx context.Context) {
 			messageChannel := client.createSubscribe(ctx, stream.Subject)
 			go client.jetstreamPublish(ctx, stream.Subject, stream.Name)
 			go client.jetstreamSubscribe(messageChannel, stream.Name)
+		}
+	} else {
+		for _, stream := range client.config.Streams {
+			go client.coreSubscribe(stream.Subject)
+			go client.corePublish(stream.Subject)
 		}
 	}
 }
@@ -203,6 +215,42 @@ func (client *Client) jetstreamSubscribe(h <-chan *Message, streamName string) {
 		client.metrics.SuccessCounter.With(prometheus.Labels{
 			"type":    successfulSubscribe,
 			"stream":  streamName,
+			"cluster": clusterName,
+		}).Add(1)
+
+		client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
+	}
+}
+
+func (client *Client) coreSubscribe(subject string) {
+	clusterName := client.connection.ConnectedClusterName()
+
+	messageHandler, h := client.messageHandlerCoreFactory()
+
+	if _, err := client.connection.Subscribe(subject, messageHandler); err != nil {
+		client.logger.Panic("Consuming failed", zap.Error(err))
+	}
+
+	for msg := range h {
+		var publishTime time.Time
+
+		if err := publishTime.UnmarshalBinary(msg.Data); err != nil {
+			client.logger.Error("unable to unmarshal binary data for publishTime.")
+			client.logger.Info("received message but could not calculate latency due to unmarshalling error.",
+				zap.String("subject", msg.Subject),
+			)
+
+			return
+		}
+
+		latency := time.Since(publishTime).Seconds()
+
+		client.metrics.Latency.With(prometheus.Labels{
+			"cluster": clusterName,
+		}).Observe(latency)
+
+		client.metrics.SuccessCounter.With(prometheus.Labels{
+			"type":    successfulSubscribe,
 			"cluster": clusterName,
 		}).Add(1)
 
@@ -290,6 +338,21 @@ func (client *Client) messageHandlerJetstreamFactory() (jetstream.MessageHandler
 		ch <- &Message{
 			Subject: msg.Subject(),
 			Data:    msg.Data(),
+		}
+
+		if err := msg.Ack(); err != nil {
+			client.logger.Error("Failed to acknowledge the message", zap.Error(err))
+		}
+	}, ch
+}
+
+func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Message) {
+	ch := make(chan *Message)
+
+	return func(msg *nats.Msg) {
+		ch <- &Message{
+			Subject: msg.Subject,
+			Data:    msg.Data,
 		}
 
 		if err := msg.Ack(); err != nil {
