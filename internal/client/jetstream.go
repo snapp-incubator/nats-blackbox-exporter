@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"time"
@@ -18,6 +19,11 @@ const (
 	successfulPublish   = "successful publish"
 	subjectSuffix       = "_blackbox_exporter"
 )
+
+type Payload struct {
+	PublishTime time.Time `json:"publish_time"`
+	Region      string    `json:"region"`
+}
 
 type Message struct {
 	Subject string
@@ -195,23 +201,24 @@ func (client *Client) jetstreamSubscribe(h <-chan *Message, streamName string) {
 	clusterName := client.connection.ConnectedClusterName()
 
 	for msg := range h {
-		var publishTime time.Time
+		var payload Payload
 
-		if err := publishTime.UnmarshalBinary(msg.Data); err != nil {
-			client.logger.Error("unable to unmarshal binary data for publishTime.")
-			client.logger.Info("received message but could not calculate latency due to unmarshalling error.",
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
 				zap.String("subject", msg.Subject),
+				zap.Error(err),
 			)
 
 			return
 		}
 
-		latency := time.Since(publishTime).Seconds()
+		latency := time.Since(payload.PublishTime).Seconds()
 
 		client.metrics.Latency.With(prometheus.Labels{
 			"subject": msg.Subject,
 			"stream":  streamName,
 			"cluster": clusterName,
+			"region":  payload.Region,
 		}).Observe(latency)
 
 		client.metrics.SuccessCounter.With(prometheus.Labels{
@@ -219,6 +226,7 @@ func (client *Client) jetstreamSubscribe(h <-chan *Message, streamName string) {
 			"type":    successfulSubscribe,
 			"stream":  streamName,
 			"cluster": clusterName,
+			"region":  payload.Region,
 		}).Add(1)
 
 		client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
@@ -235,23 +243,24 @@ func (client *Client) coreSubscribe(subject string) {
 	}
 
 	for msg := range h {
-		var publishTime time.Time
+		var payload Payload
 
-		if err := publishTime.UnmarshalBinary(msg.Data); err != nil {
-			client.logger.Error("unable to unmarshal binary data for publishTime.")
-			client.logger.Info("received message but could not calculate latency due to unmarshalling error.",
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
 				zap.String("subject", msg.Subject),
+				zap.Error(err),
 			)
 
 			return
 		}
 
-		latency := time.Since(publishTime).Seconds()
+		latency := time.Since(payload.PublishTime).Seconds()
 
 		client.metrics.Latency.With(prometheus.Labels{
 			"subject": subject,
 			"stream":  "-",
 			"cluster": clusterName,
+			"region":  payload.Region,
 		}).Observe(latency)
 
 		client.metrics.SuccessCounter.With(prometheus.Labels{
@@ -259,6 +268,7 @@ func (client *Client) coreSubscribe(subject string) {
 			"stream":  "-",
 			"type":    successfulSubscribe,
 			"cluster": clusterName,
+			"region":  payload.Region,
 		}).Add(1)
 
 		client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
@@ -269,9 +279,14 @@ func (client *Client) corePublish(subject string) {
 	clusterName := client.connection.ConnectedClusterName()
 
 	for {
-		t, err := time.Now().MarshalBinary()
+		t, err := json.Marshal(Payload{
+			PublishTime: time.Now(),
+			Region:      client.config.Region,
+		})
 		if err != nil {
 			client.logger.Error("could not marshal current time.", zap.Error(err))
+
+			continue
 		}
 
 		if err := client.connection.Publish(subject, t); err != nil {
@@ -307,9 +322,14 @@ func (client *Client) jetstreamPublish(ctx context.Context, subject string, stre
 	clusterName := client.connection.ConnectedClusterName()
 
 	for {
-		t, err := time.Now().MarshalBinary()
+		t, err := json.Marshal(Payload{
+			PublishTime: time.Now(),
+			Region:      client.config.Region,
+		})
 		if err != nil {
 			client.logger.Error("could not marshal current time.", zap.Error(err))
+
+			continue
 		}
 
 		if ack, err := client.jetstream.Publish(ctx, subject, t); err != nil {

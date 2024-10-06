@@ -16,6 +16,7 @@ data:
       queue_subscription_group: {{ .Values.nats.queue_subscription_group | quote }}
       flush_timeout: {{ .Values.nats.flush_timeout | quote }}
       new_stream_allow: {{ .Values.nats.new_stream_allow }}
+      region: {{ .Values.nats.region }}
     metric:
       server:
         address: ":{{ .Values.metrics.port | default 8080 }}"

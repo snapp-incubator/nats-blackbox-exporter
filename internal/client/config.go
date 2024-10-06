@@ -13,6 +13,7 @@ type Config struct {
 	QueueSubscriptionGroup string        `json:"queue_subscription_group" koanf:"queue_subscription_group"`
 	FlushTimeout           time.Duration `json:"flush_timeout"            koanf:"flush_timeout"`
 	ClientName             string        `json:"client_name"              koanf:"client_name"`
+	Region                 string        `json:"region"                   koanf:"region"`
 }
 
 type Stream struct {

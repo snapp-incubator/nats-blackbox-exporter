@@ -31,6 +31,7 @@ func Default() Config {
 			QueueSubscriptionGroup: "group",
 			FlushTimeout:           2 * time.Second,
 			ClientName:             "localhost",
+			Region:                 "-",
 		},
 		Metric: metric.Config{
 			Server:  metric.Server{Address: ":8080"},
