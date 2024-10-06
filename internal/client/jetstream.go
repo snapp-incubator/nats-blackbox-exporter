@@ -209,7 +209,7 @@ func (client *Client) jetstreamSubscribe(h <-chan *Message, streamName string) {
 				zap.Error(err),
 			)
 
-			return
+			continue
 		}
 
 		latency := time.Since(payload.PublishTime).Seconds()
@@ -251,7 +251,7 @@ func (client *Client) coreSubscribe(subject string) {
 				zap.Error(err),
 			)
 
-			return
+			continue
 		}
 
 		latency := time.Since(payload.PublishTime).Seconds()
