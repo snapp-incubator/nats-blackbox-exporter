@@ -385,10 +385,6 @@ func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Mess
 			Subject: msg.Subject,
 			Data:    msg.Data,
 		}
-
-		if err := msg.Ack(); err != nil {
-			client.logger.Error("Failed to acknowledge the message", zap.Error(err))
-		}
 	}, ch
 }
 
