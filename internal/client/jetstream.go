@@ -311,6 +311,7 @@ func (client *Client) corePublish(subject string) {
 				"type":    successfulPublish,
 				"cluster": clusterName,
 				"subject": subject,
+				"region":  client.config.Region,
 			}).Add(1)
 		}
 
@@ -354,6 +355,7 @@ func (client *Client) jetstreamPublish(ctx context.Context, subject string, stre
 				"type":    successfulPublish,
 				"stream":  streamName,
 				"cluster": clusterName,
+				"region":  client.config.Region,
 			}).Add(1)
 			client.logger.Info("receive ack", zap.String("stream", ack.Stream))
 		}
