@@ -101,7 +101,7 @@ func (client *Client) UpdateOrCreateStream(ctx context.Context) {
 	if client.config.AllExistingStreams {
 		streamNames := client.jetstream.StreamNames(ctx)
 		for stream := range streamNames.Name() {
-			client.config.Streams = append(client.config.Streams, Stream{Name: stream})
+			client.config.Streams = append(client.config.Streams, Stream{Name: stream, Subject: ""})
 		}
 	}
 
