@@ -98,6 +98,13 @@ func (client *Client) connectJetstream() {
 }
 
 func (client *Client) UpdateOrCreateStream(ctx context.Context) {
+	if client.config.AllExistingStreams {
+		streamNames := client.jetstream.StreamNames(ctx)
+		for stream := range streamNames.Name() {
+			client.config.Streams = append(client.config.Streams, Stream{Name: stream, Subject: ""})
+		}
+	}
+
 	for i, str := range client.config.Streams {
 		if str.Subject == "" {
 			client.config.Streams[i].Subject = str.Name + subjectSuffix
@@ -109,12 +116,12 @@ func (client *Client) UpdateOrCreateStream(ctx context.Context) {
 			if err == nil {
 				client.updateStream(ctx, client.config.Streams[i], info)
 
-				return
+				continue
 			}
 		} else if errors.Is(err, jetstream.ErrStreamNotFound) && client.config.NewStreamAllow {
 			client.createStream(ctx, client.config.Streams[i])
 
-			return
+			continue
 		}
 
 		client.logger.Error("could not add subject", zap.String("stream", str.Name), zap.Error(err))
@@ -335,6 +342,7 @@ func (client *Client) jetstreamPublish(ctx context.Context, subject string, stre
 
 		if ack, err := client.jetstream.Publish(ctx, subject, t); err != nil {
 			client.metrics.SuccessCounter.With(prometheus.Labels{
+				"region":  client.config.Region,
 				"subject": subject,
 				"type":    failedPublish,
 				"stream":  streamName,
