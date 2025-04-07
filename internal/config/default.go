@@ -16,14 +16,10 @@ func Default() Config {
 			Level: "debug",
 		},
 		NATS: client.Config{
-			IsJetstream:    true,
-			NewStreamAllow: true,
-			Streams: []client.Stream{
-				{
-					Name:    "test",
-					Subject: "test",
-				},
-			},
+			IsJetstream:            true,
+			NewStreamAllow:         true,
+			AllExistingStreams:     false,
+			Streams:                []client.Stream{},
 			URL:                    "localhost:4222",
 			PublishInterval:        2 * time.Second,
 			RequestTimeout:         50 * time.Millisecond,

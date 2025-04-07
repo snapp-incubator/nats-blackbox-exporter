@@ -4,6 +4,7 @@ import "time"
 
 type Config struct {
 	IsJetstream            bool          `json:"is_jetstream"             koanf:"is_jetstream"`
+	AllExistingStreams     bool          `json:"all_existing_streams" koanf:"all_existing_streams"`
 	NewStreamAllow         bool          `json:"new_stream_allow"         koanf:"new_stream_allow"`
 	Streams                []Stream      `json:"streams,omitempty"        koanf:"streams"`
 	URL                    string        `json:"url,omitempty"            koanf:"url"`
