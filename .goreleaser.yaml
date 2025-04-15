@@ -9,7 +9,7 @@ release:
 checksum: {}
 
 builds:
-  - binary: gosimac
+  - binary: nats-blackbox-exporter
     goos:
       - linux
       - darwin
