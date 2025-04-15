@@ -168,8 +168,9 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 
 func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream *Stream) {
 	var payload Payload
+
 	clusterName := client.connection.ConnectedClusterName()
-	ctx, baseCancel := context.WithCancel(context.Background())
+	ctx, baseCancel := context.WithCancel(context.Background()) //nolint:contextcheck
 
 	customCancel := func() {
 		client.logger.Info("Cancel function called")
@@ -237,6 +238,7 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) <-cha
 func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.CancelFunc, stream *Stream, messageReceived <-chan struct{}) {
 	waitTime := subscribeHealthMultiplication * client.config.PublishInterval
 	timer := time.NewTimer(waitTime)
+
 	defer timer.Stop()
 
 	for {
@@ -244,6 +246,7 @@ func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.Ca
 		case <-messageReceived:
 			if !timer.Stop() {
 				<-timer.C
+
 			}
 			timer.Reset(waitTime)
 
@@ -259,6 +262,7 @@ func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.Ca
 
 func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived chan struct{}, h <-chan *Message, stream *Stream) {
 	var payload Payload
+
 	clusterName := client.connection.ConnectedClusterName()
 
 	defer func() {
@@ -273,6 +277,7 @@ func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived ch
 		select {
 		case <-ctx.Done():
 			client.logger.Info("Context canceled, stopping subscription", zap.String("stream", stream.Name))
+
 			return
 		case msg := <-h:
 			messageReceived <- struct{}{}
@@ -392,6 +397,7 @@ func (client *Client) corePublish(subject string) {
 
 		time.Sleep(client.config.PublishInterval)
 	}
+
 }
 
 func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
