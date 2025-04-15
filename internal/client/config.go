@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"time"
 )
 
@@ -20,6 +21,8 @@ type Config struct {
 }
 
 type Stream struct {
-	Name    string `json:"name,omitempty"    koanf:"name"`
-	Subject string `json:"subject,omitempty" koanf:"subject"`
+	Name       string `json:"name,omitempty"    koanf:"name"`
+	Subject    string `json:"subject,omitempty" koanf:"subject"`
+	ctx        context.Context
+	cancelFunc context.CancelFunc
 }

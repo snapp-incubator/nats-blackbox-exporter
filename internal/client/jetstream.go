@@ -39,15 +39,10 @@ type Client struct {
 
 	logger  *zap.Logger
 	metrics Metrics
-
-	ctx        map[*Stream]context.Context
-	cancelFunc map[*Stream]context.CancelFunc
 }
 
 // New initializes NATS connection.
 func New(config Config, logger *zap.Logger) *Client {
-	ctxMap := make(map[*Stream]context.Context)
-	cancelFuncMap := make(map[*Stream]context.CancelFunc)
 	conn := "jetstream"
 	if !config.IsJetstream {
 		conn = "core"
@@ -59,8 +54,6 @@ func New(config Config, logger *zap.Logger) *Client {
 		config:     config,
 		logger:     logger,
 		metrics:    NewMetrics(conn),
-		ctx:        ctxMap,
-		cancelFunc: cancelFuncMap,
 	}
 
 	client.connect()
@@ -163,7 +156,7 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 }
 
 func (client *Client) setupPublishAndSubscribe(stream *Stream) {
-	client.ctx[stream], client.cancelFunc[stream] = context.WithCancel(context.Background())
+	stream.ctx, stream.cancelFunc = context.WithCancel(context.Background())
 	messageChannel := client.createSubscribe(stream)
 	messageReceived := make(chan struct{})
 	go client.jetstreamPublish(stream)
@@ -194,7 +187,7 @@ func (client *Client) createSubscribe(stream *Stream) <-chan *Message {
 	messageHandler, h := client.messageHandlerJetstreamFactory()
 
 	con, err := client.jetstream.CreateOrUpdateConsumer(
-		client.ctx[stream],
+		stream.ctx,
 		stream.Name,
 		jetstream.ConsumerConfig{ // nolint: exhaustruct
 			DeliverPolicy: jetstream.DeliverNewPolicy,
@@ -233,7 +226,7 @@ func (client *Client) subscribeHealth(stream *Stream, messageReceived <-chan str
 		case <-timer.C:
 
 			client.logger.Warn("No message received in", zap.Duration("seconds", waitTime), zap.String("stream", stream.Name))
-			client.cancelFunc[stream]()
+			stream.cancelFunc()
 			client.setupPublishAndSubscribe(stream)
 			return
 		}
@@ -246,7 +239,7 @@ func (client *Client) jetstreamSubscribe(messageReceived chan struct{}, h <-chan
 	for {
 		var payload Payload
 		select {
-		case <-client.ctx[stream].Done():
+		case <-stream.ctx.Done():
 			client.logger.Info("Context canceled, stopping subscription", zap.String("stream", stream.Name))
 			client.metrics.NoMessageReceived.With(prometheus.Labels{
 				"stream":  stream.Name,
@@ -375,10 +368,9 @@ func (client *Client) corePublish(subject string) {
 
 func (client *Client) jetstreamPublish(stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
-
 	for {
 		select {
-		case <-client.ctx[stream].Done():
+		case <-stream.ctx.Done():
 			client.logger.Info("Context canceled, stopping publish", zap.String("stream", stream.Name))
 			return
 		case <-time.After(client.config.PublishInterval):
@@ -392,7 +384,7 @@ func (client *Client) jetstreamPublish(stream *Stream) {
 				continue
 			}
 
-			if ack, err := client.jetstream.Publish(client.ctx[stream], stream.Subject, t); err != nil {
+			if ack, err := client.jetstream.Publish(stream.ctx, stream.Subject, t); err != nil {
 				client.metrics.SuccessCounter.With(prometheus.Labels{
 					"region":  client.config.Region,
 					"subject": stream.Subject,
