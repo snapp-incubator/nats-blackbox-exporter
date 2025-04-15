@@ -156,12 +156,12 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 }
 
 func (client *Client) setupPublishAndSubscribe(stream *Stream) {
-	stream.ctx, stream.cancelFunc = context.WithCancel(context.Background())
-	messageChannel := client.createSubscribe(stream)
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	messageChannel := client.createSubscribe(ctx, stream)
 	messageReceived := make(chan struct{})
-	go client.jetstreamPublish(stream)
-	go client.jetstreamSubscribe(messageReceived, messageChannel, stream)
-	go client.subscribeHealth(stream, messageReceived)
+	go client.jetstreamPublish(ctx, stream)
+	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream)
+	go client.subscribeHealth(ctx, cancelFunc, stream, messageReceived)
 
 }
 
@@ -183,11 +183,11 @@ func (client *Client) StartBlackboxTest(ctx context.Context) {
 }
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages.
-func (client *Client) createSubscribe(stream *Stream) <-chan *Message {
+func (client *Client) createSubscribe(ctx context.Context, stream *Stream) <-chan *Message {
 	messageHandler, h := client.messageHandlerJetstreamFactory()
 
 	con, err := client.jetstream.CreateOrUpdateConsumer(
-		stream.ctx,
+		ctx,
 		stream.Name,
 		jetstream.ConsumerConfig{ // nolint: exhaustruct
 			DeliverPolicy: jetstream.DeliverNewPolicy,
@@ -210,7 +210,7 @@ func (client *Client) createSubscribe(stream *Stream) <-chan *Message {
 	return h
 }
 
-func (client *Client) subscribeHealth(stream *Stream, messageReceived <-chan struct{}) {
+func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.CancelFunc, stream *Stream, messageReceived <-chan struct{}) {
 	waitTime := 10 * client.config.PublishInterval
 	timer := time.NewTimer(waitTime)
 	defer timer.Stop()
@@ -226,20 +226,20 @@ func (client *Client) subscribeHealth(stream *Stream, messageReceived <-chan str
 		case <-timer.C:
 
 			client.logger.Warn("No message received in", zap.Duration("seconds", waitTime), zap.String("stream", stream.Name))
-			stream.cancelFunc()
+			cancelFunc()
 			client.setupPublishAndSubscribe(stream)
 			return
 		}
 	}
 }
 
-func (client *Client) jetstreamSubscribe(messageReceived chan struct{}, h <-chan *Message, stream *Stream) {
+func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived chan struct{}, h <-chan *Message, stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
 
 	for {
 		var payload Payload
 		select {
-		case <-stream.ctx.Done():
+		case <-ctx.Done():
 			client.logger.Info("Context canceled, stopping subscription", zap.String("stream", stream.Name))
 			client.metrics.NoMessageReceived.With(prometheus.Labels{
 				"stream":  stream.Name,
@@ -366,11 +366,11 @@ func (client *Client) corePublish(subject string) {
 	}
 }
 
-func (client *Client) jetstreamPublish(stream *Stream) {
+func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
 	for {
 		select {
-		case <-stream.ctx.Done():
+		case <-ctx.Done():
 			client.logger.Info("Context canceled, stopping publish", zap.String("stream", stream.Name))
 			return
 		case <-time.After(client.config.PublishInterval):
@@ -384,7 +384,7 @@ func (client *Client) jetstreamPublish(stream *Stream) {
 				continue
 			}
 
-			if ack, err := client.jetstream.Publish(stream.ctx, stream.Subject, t); err != nil {
+			if ack, err := client.jetstream.Publish(ctx, stream.Subject, t); err != nil {
 				client.metrics.SuccessCounter.With(prometheus.Labels{
 					"region":  client.config.Region,
 					"subject": stream.Subject,
