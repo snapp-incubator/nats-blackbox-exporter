@@ -2,6 +2,8 @@ logger:
   level: "debug"
 
 nats:
+  is_jetstream: true
+  all_existing_streams: true
   new_stream_allow: true
   streams:         
     name: "stream"

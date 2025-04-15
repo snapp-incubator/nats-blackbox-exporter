@@ -13,9 +13,10 @@ const (
 
 // Metrics has all the client metrics.
 type Metrics struct {
-	Connection     prometheus.CounterVec
-	Latency        prometheus.HistogramVec
-	SuccessCounter prometheus.CounterVec
+	Connection        prometheus.CounterVec
+	Latency           prometheus.HistogramVec
+	SuccessCounter    prometheus.CounterVec
+	NoMessageReceived prometheus.CounterVec
 }
 
 // nolint: ireturn
@@ -110,5 +111,14 @@ func NewMetrics(conn string) Metrics {
 				"conn": conn,
 			},
 		}, []string{"type", "stream", "cluster", "subject", "region"}),
+		NoMessageReceived: newCounterVec(prometheus.CounterOpts{
+			Namespace: Namespace,
+			Subsystem: Subsystem,
+			Name:      "no_message_received",
+			Help:      "No Message received and stream reconnected",
+			ConstLabels: prometheus.Labels{
+				"conn": conn,
+			},
+		}, []string{"stream", "cluster", "region"}),
 	}
 }

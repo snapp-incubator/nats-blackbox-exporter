@@ -39,10 +39,15 @@ type Client struct {
 
 	logger  *zap.Logger
 	metrics Metrics
+
+	ctx        map[*Stream]context.Context
+	cancelFunc map[*Stream]context.CancelFunc
 }
 
 // New initializes NATS connection.
 func New(config Config, logger *zap.Logger) *Client {
+	ctxMap := make(map[*Stream]context.Context)
+	cancelFuncMap := make(map[*Stream]context.CancelFunc)
 	conn := "jetstream"
 	if !config.IsJetstream {
 		conn = "core"
@@ -51,11 +56,11 @@ func New(config Config, logger *zap.Logger) *Client {
 	client := &Client{
 		jetstream:  nil,
 		connection: nil,
-
-		config: config,
-
-		logger:  logger,
-		metrics: NewMetrics(conn),
+		config:     config,
+		logger:     logger,
+		metrics:    NewMetrics(conn),
+		ctx:        ctxMap,
+		cancelFunc: cancelFuncMap,
 	}
 
 	client.connect()
@@ -157,6 +162,16 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 	client.logger.Info("add new stream")
 }
 
+func (client *Client) setupPublishAndSubscribe(stream *Stream) {
+	client.ctx[stream], client.cancelFunc[stream] = context.WithCancel(context.Background())
+	messageChannel := client.createSubscribe(stream)
+	messageReceived := make(chan struct{})
+	go client.jetstreamPublish(stream)
+	go client.jetstreamSubscribe(messageReceived, messageChannel, stream)
+	go client.subscribeHealth(stream, messageReceived)
+
+}
+
 func (client *Client) StartBlackboxTest(ctx context.Context) {
 	if len(client.config.Streams) == 0 {
 		client.logger.Panic("at least one stream is required.")
@@ -164,9 +179,7 @@ func (client *Client) StartBlackboxTest(ctx context.Context) {
 
 	if client.config.IsJetstream {
 		for _, stream := range client.config.Streams {
-			messageChannel := client.createSubscribe(ctx, stream.Subject, stream.Name)
-			go client.jetstreamPublish(ctx, stream.Subject, stream.Name)
-			go client.jetstreamSubscribe(messageChannel, stream.Name)
+			client.setupPublishAndSubscribe(&stream)
 		}
 	} else {
 		for _, stream := range client.config.Streams {
@@ -177,18 +190,18 @@ func (client *Client) StartBlackboxTest(ctx context.Context) {
 }
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages.
-func (client *Client) createSubscribe(ctx context.Context, subject string, stream string) <-chan *Message {
+func (client *Client) createSubscribe(stream *Stream) <-chan *Message {
 	messageHandler, h := client.messageHandlerJetstreamFactory()
 
 	con, err := client.jetstream.CreateOrUpdateConsumer(
-		ctx,
-		stream,
+		client.ctx[stream],
+		stream.Name,
 		jetstream.ConsumerConfig{ // nolint: exhaustruct
 			DeliverPolicy: jetstream.DeliverNewPolicy,
 			ReplayPolicy:  jetstream.ReplayInstantPolicy,
 			AckPolicy:     jetstream.AckExplicitPolicy,
 			MaxAckPending: client.config.MaxPubAcksInflight,
-			FilterSubject: subject,
+			FilterSubject: stream.Subject,
 		},
 	)
 	if err != nil {
@@ -199,44 +212,78 @@ func (client *Client) createSubscribe(ctx context.Context, subject string, strea
 		client.logger.Panic("Consuming failed", zap.Error(err))
 	}
 
-	client.logger.Info("Subscribed to %s successfully", zap.String("subject", subject))
+	client.logger.Info("Subscribed to %s successfully", zap.String("subject", stream.Subject))
 
 	return h
 }
 
-func (client *Client) jetstreamSubscribe(h <-chan *Message, streamName string) {
+func (client *Client) subscribeHealth(stream *Stream, messageReceived <-chan struct{}) {
+	waitTime := 10 * client.config.PublishInterval
+	timer := time.NewTimer(waitTime)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-messageReceived:
+			if !timer.Stop() {
+				<-timer.C
+			}
+			timer.Reset(waitTime)
+
+		case <-timer.C:
+
+			client.logger.Warn("No message received in", zap.Duration("seconds", waitTime), zap.String("stream", stream.Name))
+			client.cancelFunc[stream]()
+			client.setupPublishAndSubscribe(stream)
+			return
+		}
+	}
+}
+
+func (client *Client) jetstreamSubscribe(messageReceived chan struct{}, h <-chan *Message, stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
 
-	for msg := range h {
+	for {
 		var payload Payload
+		select {
+		case <-client.ctx[stream].Done():
+			client.logger.Info("Context canceled, stopping subscription", zap.String("stream", stream.Name))
+			client.metrics.NoMessageReceived.With(prometheus.Labels{
+				"stream":  stream.Name,
+				"cluster": clusterName,
+				"region":  payload.Region,
+			}).Add(1)
+			return
+		case msg := <-h:
+			messageReceived <- struct{}{}
 
-		if err := json.Unmarshal(msg.Data, &payload); err != nil {
-			client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
-				zap.String("subject", msg.Subject),
-				zap.Error(err),
-			)
+			if err := json.Unmarshal(msg.Data, &payload); err != nil {
+				client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
+					zap.String("subject", msg.Subject),
+					zap.Error(err),
+				)
+				continue
+			}
 
-			continue
+			latency := time.Since(payload.PublishTime).Seconds()
+
+			client.metrics.Latency.With(prometheus.Labels{
+				"subject": msg.Subject,
+				"stream":  stream.Name,
+				"cluster": clusterName,
+				"region":  payload.Region,
+			}).Observe(latency)
+
+			client.metrics.SuccessCounter.With(prometheus.Labels{
+				"subject": msg.Subject,
+				"type":    successfulSubscribe,
+				"stream":  stream.Name,
+				"cluster": clusterName,
+				"region":  payload.Region,
+			}).Add(1)
+
+			client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 		}
-
-		latency := time.Since(payload.PublishTime).Seconds()
-
-		client.metrics.Latency.With(prometheus.Labels{
-			"subject": msg.Subject,
-			"stream":  streamName,
-			"cluster": clusterName,
-			"region":  payload.Region,
-		}).Observe(latency)
-
-		client.metrics.SuccessCounter.With(prometheus.Labels{
-			"subject": msg.Subject,
-			"type":    successfulSubscribe,
-			"stream":  streamName,
-			"cluster": clusterName,
-			"region":  payload.Region,
-		}).Add(1)
-
-		client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 	}
 }
 
@@ -326,49 +373,53 @@ func (client *Client) corePublish(subject string) {
 	}
 }
 
-func (client *Client) jetstreamPublish(ctx context.Context, subject string, streamName string) {
+func (client *Client) jetstreamPublish(stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
 
 	for {
-		t, err := json.Marshal(Payload{
-			PublishTime: time.Now(),
-			Region:      client.config.Region,
-		})
-		if err != nil {
-			client.logger.Error("could not marshal current time.", zap.Error(err))
+		select {
+		case <-client.ctx[stream].Done():
+			client.logger.Info("Context canceled, stopping publish", zap.String("stream", stream.Name))
+			return
+		case <-time.After(client.config.PublishInterval):
+			t, err := json.Marshal(Payload{
+				PublishTime: time.Now(),
+				Region:      client.config.Region,
+			})
+			if err != nil {
+				client.logger.Error("could not marshal current time.", zap.Error(err))
 
-			continue
-		}
-
-		if ack, err := client.jetstream.Publish(ctx, subject, t); err != nil {
-			client.metrics.SuccessCounter.With(prometheus.Labels{
-				"region":  client.config.Region,
-				"subject": subject,
-				"type":    failedPublish,
-				"stream":  streamName,
-				"cluster": clusterName,
-			}).Add(1)
-
-			switch {
-			case errors.Is(err, nats.ErrTimeout):
-				client.logger.Error("Request timeout: No response received within the timeout period.")
-			case errors.Is(err, nats.ErrNoStreamResponse):
-				client.logger.Error("Request failed: No Stream available for the subject.")
-			default:
-				client.logger.Error("Request failed: %v", zap.Error(err))
+				continue
 			}
-		} else {
-			client.metrics.SuccessCounter.With(prometheus.Labels{
-				"subject": subject,
-				"type":    successfulPublish,
-				"stream":  streamName,
-				"cluster": clusterName,
-				"region":  client.config.Region,
-			}).Add(1)
-			client.logger.Info("receive ack", zap.String("stream", ack.Stream))
-		}
 
-		time.Sleep(client.config.PublishInterval)
+			if ack, err := client.jetstream.Publish(client.ctx[stream], stream.Subject, t); err != nil {
+				client.metrics.SuccessCounter.With(prometheus.Labels{
+					"region":  client.config.Region,
+					"subject": stream.Subject,
+					"type":    failedPublish,
+					"stream":  stream.Name,
+					"cluster": clusterName,
+				}).Add(1)
+
+				switch {
+				case errors.Is(err, nats.ErrTimeout):
+					client.logger.Error("Request timeout: No response received within the timeout period.")
+				case errors.Is(err, nats.ErrNoStreamResponse):
+					client.logger.Error("Request failed: No Stream available for the subject.")
+				default:
+					client.logger.Error("Request failed: %v", zap.Error(err))
+				}
+			} else {
+				client.metrics.SuccessCounter.With(prometheus.Labels{
+					"subject": stream.Subject,
+					"type":    successfulPublish,
+					"stream":  stream.Name,
+					"cluster": clusterName,
+					"region":  client.config.Region,
+				}).Add(1)
+				client.logger.Info("receive ack", zap.String("stream", ack.Stream))
+			}
+		}
 	}
 }
 
