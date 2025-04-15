@@ -170,7 +170,7 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 	var payload Payload
 
 	clusterName := client.connection.ConnectedClusterName()
-	ctx, baseCancel := context.WithCancel(context.Background()) //nolint:contextcheck
+	ctx, baseCancel := context.WithCancel(context.Background())
 
 	customCancel := func() {
 		client.logger.Info("Cancel function called")
@@ -185,9 +185,9 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 
 	messageChannel := client.createSubscribe(ctx, stream)
 	messageReceived := make(chan struct{})
-	go client.jetstreamPublish(ctx, stream)
-	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream)
-	go client.subscribeHealth(ctx, customCancel, stream, messageReceived)
+	go client.jetstreamPublish(ctx, stream)                                    //nolint:contextcheck
+	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream) //nolint:contextcheck
+	go client.subscribeHealth(ctx, customCancel, stream, messageReceived)      //nolint:contextcheck
 }
 
 func (client *Client) StartBlackboxTest(ctx context.Context) {
@@ -246,8 +246,8 @@ func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.Ca
 		case <-messageReceived:
 			if !timer.Stop() {
 				<-timer.C
-
 			}
+
 			timer.Reset(waitTime)
 
 		case <-timer.C:
@@ -397,11 +397,11 @@ func (client *Client) corePublish(subject string) {
 
 		time.Sleep(client.config.PublishInterval)
 	}
-
 }
 
 func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
+
 	for {
 		select {
 		case <-ctx.Done():
