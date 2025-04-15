@@ -183,11 +183,14 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 		client.setupPublishAndSubscribe(parentCtx, stream)
 	}
 
-	messageChannel := client.createSubscribe(ctx, stream)
+	messageChannel := client.createSubscribe(ctx, stream) //nolint:contextcheck
 	messageReceived := make(chan struct{})
-	go client.jetstreamPublish(ctx, stream)                                    //nolint:contextcheck
+
+	go client.jetstreamPublish(ctx, stream) //nolint:contextcheck
+
 	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream) //nolint:contextcheck
-	go client.subscribeHealth(ctx, customCancel, stream, messageReceived)      //nolint:contextcheck
+
+	go client.subscribeHealth(ctx, customCancel, stream, messageReceived) //nolint:contextcheck
 }
 
 func (client *Client) StartBlackboxTest(ctx context.Context) {
