@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	successfulSubscribe = "successful subscribe"
-	failedPublish       = "failed publish"
-	successfulPublish   = "successful publish"
-	subjectSuffix       = "_blackbox_exporter"
+	successfulSubscribe           = "successful subscribe"
+	failedPublish                 = "failed publish"
+	successfulPublish             = "successful publish"
+	subjectSuffix                 = "_blackbox_exporter"
+	subscribeHealthMultiplication = 10
 )
 
 type Payload struct {
@@ -65,6 +66,16 @@ func New(config Config, logger *zap.Logger) *Client {
 	}
 
 	return client
+}
+
+// Close closes NATS connection.
+func (client *Client) Close() {
+	if err := client.connection.FlushTimeout(client.config.FlushTimeout); err != nil {
+		client.logger.Error("could not flush", zap.Error(err))
+	}
+
+	client.connection.Close()
+	client.logger.Info("NATS is closed.")
 }
 
 // connect connects create a nats core connection and fills its field.
@@ -155,14 +166,27 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 	client.logger.Info("add new stream")
 }
 
-func (client *Client) setupPublishAndSubscribe(stream *Stream) {
-	ctx, cancelFunc := context.WithCancel(context.Background())
+func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream *Stream) {
+	var payload Payload
+	clusterName := client.connection.ConnectedClusterName()
+	ctx, baseCancel := context.WithCancel(context.Background())
+
+	customCancel := func() {
+		client.logger.Info("Cancel function called")
+		client.metrics.StreamRestart.With(prometheus.Labels{
+			"stream":  stream.Name,
+			"cluster": clusterName,
+			"region":  payload.Region,
+		}).Add(1)
+		baseCancel()
+		client.setupPublishAndSubscribe(parentCtx, stream)
+	}
+
 	messageChannel := client.createSubscribe(ctx, stream)
 	messageReceived := make(chan struct{})
 	go client.jetstreamPublish(ctx, stream)
 	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream)
-	go client.subscribeHealth(ctx, cancelFunc, stream, messageReceived)
-
+	go client.subscribeHealth(ctx, customCancel, stream, messageReceived)
 }
 
 func (client *Client) StartBlackboxTest(ctx context.Context) {
@@ -172,7 +196,7 @@ func (client *Client) StartBlackboxTest(ctx context.Context) {
 
 	if client.config.IsJetstream {
 		for _, stream := range client.config.Streams {
-			client.setupPublishAndSubscribe(&stream)
+			client.setupPublishAndSubscribe(ctx, &stream)
 		}
 	} else {
 		for _, stream := range client.config.Streams {
@@ -211,7 +235,7 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) <-cha
 }
 
 func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.CancelFunc, stream *Stream, messageReceived <-chan struct{}) {
-	waitTime := 10 * client.config.PublishInterval
+	waitTime := subscribeHealthMultiplication * client.config.PublishInterval
 	timer := time.NewTimer(waitTime)
 	defer timer.Stop()
 
@@ -224,28 +248,31 @@ func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.Ca
 			timer.Reset(waitTime)
 
 		case <-timer.C:
-
 			client.logger.Warn("No message received in", zap.Duration("seconds", waitTime), zap.String("stream", stream.Name))
 			cancelFunc()
-			client.setupPublishAndSubscribe(stream)
+			client.setupPublishAndSubscribe(ctx, stream)
+
 			return
 		}
 	}
 }
 
 func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived chan struct{}, h <-chan *Message, stream *Stream) {
+	var payload Payload
 	clusterName := client.connection.ConnectedClusterName()
 
+	defer func() {
+		if r := recover(); r != nil {
+			client.logger.Error("Subscription goroutine panicked", zap.Any("error", r))
+		} else {
+			client.logger.Info("Subscription goroutine exited normally")
+		}
+	}()
+
 	for {
-		var payload Payload
 		select {
 		case <-ctx.Done():
 			client.logger.Info("Context canceled, stopping subscription", zap.String("stream", stream.Name))
-			client.metrics.NoMessageReceived.With(prometheus.Labels{
-				"stream":  stream.Name,
-				"cluster": clusterName,
-				"region":  payload.Region,
-			}).Add(1)
 			return
 		case msg := <-h:
 			messageReceived <- struct{}{}
@@ -255,6 +282,7 @@ func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived ch
 					zap.String("subject", msg.Subject),
 					zap.Error(err),
 				)
+
 				continue
 			}
 
@@ -372,6 +400,7 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 		select {
 		case <-ctx.Done():
 			client.logger.Info("Context canceled, stopping publish", zap.String("stream", stream.Name))
+
 			return
 		case <-time.After(client.config.PublishInterval):
 			t, err := json.Marshal(Payload{
@@ -439,14 +468,4 @@ func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Mess
 			Data:    msg.Data,
 		}
 	}, ch
-}
-
-// Close closes NATS connection.
-func (client *Client) Close() {
-	if err := client.connection.FlushTimeout(client.config.FlushTimeout); err != nil {
-		client.logger.Error("could not flush", zap.Error(err))
-	}
-
-	client.connection.Close()
-	client.logger.Info("NATS is closed.")
 }
