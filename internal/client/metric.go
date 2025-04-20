@@ -16,6 +16,7 @@ type Metrics struct {
 	Connection     prometheus.CounterVec
 	Latency        prometheus.HistogramVec
 	SuccessCounter prometheus.CounterVec
+	StreamRestart  prometheus.CounterVec
 }
 
 // nolint: ireturn
@@ -110,5 +111,14 @@ func NewMetrics(conn string) Metrics {
 				"conn": conn,
 			},
 		}, []string{"type", "stream", "cluster", "subject", "region"}),
+		StreamRestart: newCounterVec(prometheus.CounterOpts{
+			Namespace: Namespace,
+			Subsystem: Subsystem,
+			Name:      "stream_restart",
+			Help:      "stream restart",
+			ConstLabels: prometheus.Labels{
+				"conn": conn,
+			},
+		}, []string{"stream", "cluster", "region"}),
 	}
 }

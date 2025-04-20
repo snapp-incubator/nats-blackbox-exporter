@@ -1,6 +1,8 @@
 package client
 
-import "time"
+import (
+	"time"
+)
 
 type Config struct {
 	IsJetstream            bool          `json:"is_jetstream"             koanf:"is_jetstream"`
