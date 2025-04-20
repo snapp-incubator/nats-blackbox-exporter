@@ -15,6 +15,7 @@ const (
 type Metrics struct {
 	Connection     prometheus.CounterVec
 	Latency        prometheus.HistogramVec
+	AckDuration    prometheus.HistogramVec
 	SuccessCounter prometheus.CounterVec
 	StreamRestart  prometheus.CounterVec
 }
@@ -97,6 +98,16 @@ func NewMetrics(conn string) Metrics {
 			Subsystem: Subsystem,
 			Name:      "latency",
 			Help:      "from publish to consume duration in seconds",
+			ConstLabels: prometheus.Labels{
+				"conn": conn,
+			},
+			Buckets: latencyBuckets,
+		}, []string{"stream", "cluster", "subject", "region"}),
+		AckDuration: newHistogramVec(prometheus.HistogramOpts{
+			Namespace: Namespace,
+			Subsystem: Subsystem,
+			Name:      "ack_duration",
+			Help:      "from publish to publish ack in seconds",
 			ConstLabels: prometheus.Labels{
 				"conn": conn,
 			},
