@@ -212,7 +212,7 @@ func (client *Client) StartBlackboxTest(ctx context.Context) {
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages.
 func (client *Client) createSubscribe(ctx context.Context, stream *Stream) <-chan *Message {
-	messageHandler, h := client.messageHandlerJetstreamFactory(stream)
+	messageHandler, h := client.messageHandlerJetstreamFactory()
 
 	con, err := client.jetstream.CreateOrUpdateConsumer(
 		ctx,
@@ -453,32 +453,19 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 	}
 }
 
-func (client *Client) messageHandlerJetstreamFactory(stream *Stream) (jetstream.MessageHandler, <-chan *Message) {
-	clusterName := client.connection.ConnectedClusterName()
-	var payload Payload
-
+func (client *Client) messageHandlerJetstreamFactory() (jetstream.MessageHandler, <-chan *Message) {
 	ch := make(chan *Message)
+
 	return func(msg jetstream.Msg) {
 		ch <- &Message{
 			Subject: msg.Subject(),
 			Data:    msg.Data(),
 		}
 
-		start := time.Now()
-
 		if err := msg.Ack(); err != nil {
-			client.logger.Error("jetstream ack failed:", zap.Error(err))
+			client.logger.Error("Failed to acknowledge the message", zap.Error(err))
 		}
-
-		duration := time.Since(start).Seconds()
-		client.metrics.AckDuration.With(prometheus.Labels{
-			"subject": msg.Subject(),
-			"stream":  stream.Name,
-			"cluster": clusterName,
-			"region":  payload.Region,
-		}).Observe(duration)
 	}, ch
-
 }
 
 func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Message) {
