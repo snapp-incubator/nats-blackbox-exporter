@@ -63,41 +63,42 @@ func New(config Config, logger *zap.Logger) *Client {
 	if config.IsJetstream {
 		client.connectJetstream()
 
-		client.UpdateOrCreateStream(context.Background())
+		client.updateOrCreateStream(context.Background())
 	}
 
 	return client
 }
 
-// connect connects create a nats core connection and fills its field.
-func (client *Client) connect() {
-	var err error
-
-	if client.connection, err = nats.Connect(client.config.URL); err != nil {
-		client.logger.Panic("could not connect to nats", zap.Error(err))
+// Close closes NATS connection.
+func (client *Client) Close() {
+	if err := client.connection.FlushTimeout(client.config.FlushTimeout); err != nil {
+		client.logger.Error("could not flush", zap.Error(err))
 	}
 
-	client.connection.SetDisconnectErrHandler(func(_ *nats.Conn, err error) {
-		client.metrics.Connection.WithLabelValues("disconnection").Add(1)
-		client.logger.Error("nats disconnected", zap.Error(err))
-	})
-
-	client.connection.SetReconnectHandler(func(_ *nats.Conn) {
-		client.logger.Warn("nats reconnected")
-		client.metrics.Connection.WithLabelValues("reconnection").Add(1)
-	})
+	client.connection.Close()
+	client.logger.Info("NATS is closed.")
 }
 
-// connectJetstream create a jetstream connection using already connected nats conntion and fills its field.
-func (client *Client) connectJetstream() {
-	var err error
+func (client *Client) StartBlackboxTest(ctx context.Context) {
+	if len(client.config.Streams) == 0 {
+		client.logger.Panic("at least one stream is required.")
+	}
 
-	if client.jetstream, err = jetstream.New(client.connection); err != nil {
-		client.logger.Panic("could not connect to jetstream", zap.Error(err))
+	if client.config.IsJetstream {
+		for _, stream := range client.config.Streams {
+			messageChannel := client.createSubscribe(ctx, stream.Subject, stream.Name)
+			go client.jetstreamPublish(ctx, stream.Subject, stream.Name)
+			go client.jetstreamSubscribe(messageChannel, stream.Name)
+		}
+	} else {
+		for _, stream := range client.config.Streams {
+			go client.coreSubscribe(stream.Subject)
+			go client.corePublish(stream.Subject)
+		}
 	}
 }
 
-func (client *Client) UpdateOrCreateStream(ctx context.Context) {
+func (client *Client) updateOrCreateStream(ctx context.Context) {
 	if client.config.AllExistingStreams {
 		streamNames := client.jetstream.StreamNames(ctx)
 		for stream := range streamNames.Name() {
@@ -155,25 +156,6 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 	}
 
 	client.logger.Info("add new stream")
-}
-
-func (client *Client) StartBlackboxTest(ctx context.Context) {
-	if len(client.config.Streams) == 0 {
-		client.logger.Panic("at least one stream is required.")
-	}
-
-	if client.config.IsJetstream {
-		for _, stream := range client.config.Streams {
-			messageChannel := client.createSubscribe(ctx, stream.Subject, stream.Name)
-			go client.jetstreamPublish(ctx, stream.Subject, stream.Name)
-			go client.jetstreamSubscribe(messageChannel, stream.Name)
-		}
-	} else {
-		for _, stream := range client.config.Streams {
-			go client.coreSubscribe(stream.Subject)
-			go client.corePublish(stream.Subject)
-		}
-	}
 }
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages.
@@ -398,12 +380,30 @@ func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Mess
 	}, ch
 }
 
-// Close closes NATS connection.
-func (client *Client) Close() {
-	if err := client.connection.FlushTimeout(client.config.FlushTimeout); err != nil {
-		client.logger.Error("could not flush", zap.Error(err))
+// connect connects create a nats core connection and fills its field.
+func (client *Client) connect() {
+	var err error
+
+	if client.connection, err = nats.Connect(client.config.URL); err != nil {
+		client.logger.Panic("could not connect to nats", zap.Error(err))
 	}
 
-	client.connection.Close()
-	client.logger.Info("NATS is closed.")
+	client.connection.SetDisconnectErrHandler(func(_ *nats.Conn, err error) {
+		client.metrics.Connection.WithLabelValues("disconnection").Add(1)
+		client.logger.Error("nats disconnected", zap.Error(err))
+	})
+
+	client.connection.SetReconnectHandler(func(_ *nats.Conn) {
+		client.logger.Warn("nats reconnected")
+		client.metrics.Connection.WithLabelValues("reconnection").Add(1)
+	})
+}
+
+// connectJetstream create a jetstream connection using already connected nats conntion and fills its field.
+func (client *Client) connectJetstream() {
+	var err error
+
+	if client.jetstream, err = jetstream.New(client.connection); err != nil {
+		client.logger.Panic("could not connect to jetstream", zap.Error(err))
+	}
 }
