@@ -60,7 +60,7 @@ nats:
   queue_subscription_group: "group"
   flush_timeout: 2s
   new_stream_allow: false
-  region: "-"
+  region: "none"
 
 metrics:
   port: 8080
