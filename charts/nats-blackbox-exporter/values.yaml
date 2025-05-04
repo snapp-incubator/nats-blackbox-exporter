@@ -50,9 +50,7 @@ podMonitor:
 
 nats:
   is_jetstream: true
-  streams:
-    - name: "stream"
-      subject: "test"
+  streams: []
   url: nats://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:4222
   publish_interval: 2s
   request_timeout: 50ms
