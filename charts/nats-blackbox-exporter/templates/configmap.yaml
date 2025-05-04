@@ -17,6 +17,7 @@ data:
       flush_timeout: {{ .Values.nats.flush_timeout | quote }}
       new_stream_allow: {{ .Values.nats.new_stream_allow }}
       region: {{ .Values.nats.region }}
+      all_existing_streams: {{ .Values.nats.all_existing_streams }}
     metric:
       server:
         address: ":{{ .Values.metrics.port | default 8080 }}"
