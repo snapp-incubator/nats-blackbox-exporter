@@ -78,25 +78,6 @@ func (client *Client) Close() {
 	client.logger.Info("NATS is closed.")
 }
 
-func (client *Client) StartBlackboxTest(ctx context.Context) {
-	if len(client.config.Streams) == 0 {
-		client.logger.Panic("at least one stream is required.")
-	}
-
-	if client.config.IsJetstream {
-		for _, stream := range client.config.Streams {
-			messageChannel := client.createSubscribe(ctx, stream.Subject, stream.Name)
-			go client.jetstreamPublish(ctx, stream.Subject, stream.Name)
-			go client.jetstreamSubscribe(messageChannel, stream.Name)
-		}
-	} else {
-		for _, stream := range client.config.Streams {
-			go client.coreSubscribe(stream.Subject)
-			go client.corePublish(stream.Subject)
-		}
-	}
-}
-
 func (client *Client) updateOrCreateStream(ctx context.Context) {
 	if client.config.AllExistingStreams {
 		streamNames := client.jetstream.StreamNames(ctx)
@@ -156,7 +137,6 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 
 	client.logger.Info("add new stream")
 }
-
 
 func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream *Stream) {
 	var payload Payload
