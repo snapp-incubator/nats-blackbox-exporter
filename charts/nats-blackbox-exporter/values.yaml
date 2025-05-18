@@ -50,9 +50,8 @@ podMonitor:
 
 nats:
   is_jetstream: true
-  streams:
-    - name: "stream"
-      subject: "test"
+  all_existing_streams: true
+  streams: []
   url: nats://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:4222
   publish_interval: 2s
   request_timeout: 50ms
@@ -60,7 +59,7 @@ nats:
   queue_subscription_group: "group"
   flush_timeout: 2s
   new_stream_allow: false
-  region: "-"
+  region: "none"
 
 metrics:
   port: 8080
