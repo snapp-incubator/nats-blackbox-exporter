@@ -6,8 +6,8 @@ toolchain go1.24.1
 
 require (
 	github.com/knadh/koanf v1.5.0
-	github.com/knadh/koanf/v2 v2.2.0
-	github.com/nats-io/nats.go v1.42.0
+	github.com/knadh/koanf/v2 v2.1.2
+	github.com/nats-io/nats.go v1.41.1
 	github.com/prometheus/client_golang v1.22.0
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6

@@ -11,3 +11,5 @@ linters:
     - varnamelen
     - ireturn
     - revive
+    - lll
+    - funcorder
