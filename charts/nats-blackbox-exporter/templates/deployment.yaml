@@ -35,6 +35,9 @@ spec:
           args:
             - --configPath
             - /app/setting/config.yaml
+          env:
+            name: GODEBUG
+            value: multipathtcp=0
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: metrics
