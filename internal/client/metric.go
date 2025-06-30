@@ -23,7 +23,8 @@ type Metrics struct {
 func newHistogramVec(histogramOpts prometheus.HistogramOpts, labelNames []string) prometheus.HistogramVec {
 	ev := prometheus.NewHistogramVec(histogramOpts, labelNames)
 
-	if err := prometheus.Register(ev); err != nil {
+	err := prometheus.Register(ev)
+	if err != nil {
 		var are prometheus.AlreadyRegisteredError
 		if ok := errors.As(err, &are); ok {
 			ev, ok = are.ExistingCollector.(*prometheus.HistogramVec)
@@ -42,7 +43,8 @@ func newHistogramVec(histogramOpts prometheus.HistogramOpts, labelNames []string
 func newCounterVec(counterOpts prometheus.CounterOpts, labelNames []string) prometheus.CounterVec {
 	ev := prometheus.NewCounterVec(counterOpts, labelNames)
 
-	if err := prometheus.Register(ev); err != nil {
+	err := prometheus.Register(ev)
+	if err != nil {
 		var are prometheus.AlreadyRegisteredError
 		if ok := errors.As(err, &are); ok {
 			ev, ok = are.ExistingCollector.(*prometheus.CounterVec)

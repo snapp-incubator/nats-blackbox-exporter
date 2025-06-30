@@ -44,7 +44,8 @@ func (s ServerInfo) Start(logger *zap.Logger) {
 			TLSConfig:    nil,
 		}
 
-		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		err := srv.ListenAndServe()
+		if !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("metric server initiation failed", zap.Error(err))
 		}
 	}()

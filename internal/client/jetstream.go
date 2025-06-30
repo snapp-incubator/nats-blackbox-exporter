@@ -70,7 +70,8 @@ func New(config Config, logger *zap.Logger) *Client {
 
 // Close closes NATS connection.
 func (client *Client) Close() {
-	if err := client.connection.FlushTimeout(client.config.FlushTimeout); err != nil {
+	err := client.connection.FlushTimeout(client.config.FlushTimeout)
+	if err != nil {
 		client.logger.Error("could not flush", zap.Error(err))
 	}
 
@@ -128,10 +129,11 @@ func (client *Client) updateStream(ctx context.Context, stream Stream, info *jet
 
 func (client *Client) createStream(ctx context.Context, stream Stream) {
 	// nolint: exhaustruct
-	if _, err := client.jetstream.CreateStream(ctx, jetstream.StreamConfig{
+	_, err := client.jetstream.CreateStream(ctx, jetstream.StreamConfig{
 		Name:     stream.Name,
 		Subjects: []string{stream.Subject},
-	}); err != nil {
+	})
+	if err != nil {
 		client.logger.Error("could not add stream", zap.String("stream", stream.Name), zap.Error(err))
 	}
 
@@ -201,7 +203,8 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) <-cha
 		client.logger.Panic("Create consumer failed", zap.Error(err))
 	}
 
-	if _, err := con.Consume(messageHandler); err != nil {
+	_, err = con.Consume(messageHandler)
+	if err != nil {
 		client.logger.Panic("Consuming failed", zap.Error(err))
 	}
 
@@ -257,7 +260,8 @@ func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived ch
 		case msg := <-h:
 			messageReceived <- struct{}{}
 
-			if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			err := json.Unmarshal(msg.Data, &payload)
+			if err != nil {
 				client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
 					zap.String("subject", msg.Subject),
 					zap.Error(err),
@@ -293,14 +297,16 @@ func (client *Client) coreSubscribe(subject string) {
 
 	messageHandler, h := client.messageHandlerCoreFactory()
 
-	if _, err := client.connection.Subscribe(subject, messageHandler); err != nil {
+	_, err := client.connection.Subscribe(subject, messageHandler)
+	if err != nil {
 		client.logger.Panic("Consuming failed", zap.Error(err))
 	}
 
 	for msg := range h {
 		var payload Payload
 
-		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+		err := json.Unmarshal(msg.Data, &payload)
+		if err != nil {
 			client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
 				zap.String("subject", msg.Subject),
 				zap.Error(err),
@@ -344,7 +350,8 @@ func (client *Client) corePublish(subject string) {
 			continue
 		}
 
-		if err := client.connection.Publish(subject, t); err != nil {
+		err = client.connection.Publish(subject, t)
+		if err != nil {
 			client.metrics.SuccessCounter.With(prometheus.Labels{
 				"stream":  "-",
 				"subject": subject,
@@ -394,7 +401,8 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 				continue
 			}
 
-			if ack, err := client.jetstream.Publish(ctx, stream.Subject, t); err != nil {
+			ack, err := client.jetstream.Publish(ctx, stream.Subject, t)
+			if err != nil {
 				client.metrics.SuccessCounter.With(prometheus.Labels{
 					"region":  client.config.Region,
 					"subject": stream.Subject,
@@ -434,7 +442,8 @@ func (client *Client) messageHandlerJetstreamFactory() (jetstream.MessageHandler
 			Data:    msg.Data(),
 		}
 
-		if err := msg.Ack(); err != nil {
+		err := msg.Ack()
+		if err != nil {
 			client.logger.Error("Failed to acknowledge the message", zap.Error(err))
 		}
 	}, ch
@@ -455,7 +464,8 @@ func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Mess
 func (client *Client) connect() {
 	var err error
 
-	if client.connection, err = nats.Connect(client.config.URL); err != nil {
+	client.connection, err = nats.Connect(client.config.URL)
+	if err != nil {
 		client.logger.Panic("could not connect to nats", zap.Error(err))
 	}
 
@@ -474,7 +484,8 @@ func (client *Client) connect() {
 func (client *Client) connectJetstream() {
 	var err error
 
-	if client.jetstream, err = jetstream.New(client.connection); err != nil {
+	client.jetstream, err = jetstream.New(client.connection)
+	if err != nil {
 		client.logger.Panic("could not connect to jetstream", zap.Error(err))
 	}
 }
