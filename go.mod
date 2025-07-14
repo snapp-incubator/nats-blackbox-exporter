@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/knadh/koanf v1.5.0
-	github.com/knadh/koanf/v2 v2.2.1
+	github.com/knadh/koanf/v2 v2.2.2
 	github.com/nats-io/nats.go v1.43.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/spf13/cobra v1.9.1
