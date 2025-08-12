@@ -454,7 +454,6 @@ func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Mess
 // connect connects create a nats core connection and fills its field.
 func (client *Client) connect() {
 	var err error
-
 	if client.connection, err = nats.Connect(client.config.URL); err != nil {
 		client.logger.Panic("could not connect to nats", zap.Error(err))
 	}
@@ -473,7 +472,6 @@ func (client *Client) connect() {
 // connectJetstream create a jetstream connection using already connected nats conntion and fills its field.
 func (client *Client) connectJetstream() {
 	var err error
-
 	if client.jetstream, err = jetstream.New(client.connection); err != nil {
 		client.logger.Panic("could not connect to jetstream", zap.Error(err))
 	}
