@@ -34,8 +34,7 @@ func Execute() {
 		},
 	}
 
-	err := root.Execute()
-	if err != nil {
+	if err := root.Execute(); err != nil {
 		os.Exit(ExitFailure)
 	}
 }
