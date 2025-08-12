@@ -13,3 +13,4 @@ linters:
     - revive
     - lll
     - funcorder
+    - noinlineerr
