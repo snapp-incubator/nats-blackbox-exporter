@@ -1,5 +1,5 @@
 # Start from the latest golang base image
-FROM golang:1.24-alpine3.21 AS builder
+FROM golang:1.25-alpine3.22 AS builder
 
 # Set the Current Working Directory inside the container
 WORKDIR /app
@@ -17,7 +17,7 @@ COPY . .
 WORKDIR /app/cmd/nats-blackbox-exporter
 RUN go build -o /nats-blackbox-exporter
 
-FROM alpine:3.20
+FROM alpine:3.22
 
 WORKDIR /app/
 
