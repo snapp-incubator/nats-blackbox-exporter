@@ -10,6 +10,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
 
@@ -42,8 +43,8 @@ type Client struct {
 	metrics Metrics
 }
 
-// New initializes NATS connection.
-func New(config Config, logger *zap.Logger) *Client {
+// Provide initializes NATS connection.
+func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) *Client {
 	conn := "jetstream"
 	if !config.IsJetstream {
 		conn = "core"
@@ -64,6 +65,10 @@ func New(config Config, logger *zap.Logger) *Client {
 
 		client.updateOrCreateStream(context.Background())
 	}
+
+	lc.Append(fx.StartHook(func(ctx context.Context) {
+		client.StartBlackboxTest(ctx)
+	}))
 
 	return client
 }

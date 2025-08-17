@@ -13,7 +13,7 @@ type Config struct {
 }
 
 // New creates a zap logger for console.
-func New(cfg Config) *zap.Logger {
+func Provide(cfg Config) *zap.Logger {
 	var lvl zapcore.Level
 	if err := lvl.Set(cfg.Level); err != nil {
 		log.Printf("cannot parse log level %s: %s", cfg.Level, err)

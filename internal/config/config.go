@@ -10,10 +10,12 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
+	"github.com/tidwall/pretty"
+	"go.uber.org/fx"
+
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
-	"github.com/tidwall/pretty"
 )
 
 const (
@@ -24,6 +26,8 @@ const (
 type (
 	// Config holds all configurations.
 	Config struct {
+		fx.Out
+
 		Logger logger.Config `json:"logger,omitempty" koanf:"logger"`
 		NATS   client.Config `json:"nats,omitempty"   koanf:"nats"`
 		Metric metric.Config `json:"metric,omitempty" koanf:"metric"`
@@ -31,7 +35,7 @@ type (
 )
 
 // New reads configuration with koanf.
-func New(configPath string) Config {
+func Provide(configPath string) Config {
 	var instance Config
 
 	k := koanf.New(".")

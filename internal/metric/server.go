@@ -6,17 +6,18 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
 
-// MetricServer contains information about metrics server.
+// ServerInfo contains information about metrics server.
 type ServerInfo struct {
 	srv     *http.ServeMux
 	address string
 }
 
-// NewServer creates a new monitoring server.
-func NewServer(cfg Config) ServerInfo {
+// Provide creates a new monitoring server.
+func Provide(lc fx.Lifecycle, cfg Config, logger *zap.Logger) ServerInfo {
 	var srv *http.ServeMux
 
 	if cfg.Enabled {
@@ -24,10 +25,18 @@ func NewServer(cfg Config) ServerInfo {
 		srv.Handle("/metrics", promhttp.Handler())
 	}
 
-	return ServerInfo{
+	s := ServerInfo{
 		address: cfg.Server.Address,
 		srv:     srv,
 	}
+
+	lc.Append(
+		fx.StartHook(func() {
+			s.Start(logger)
+		}),
+	)
+
+	return s
 }
 
 // Start creates and run a metric server for prometheus in new go routine.
