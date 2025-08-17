@@ -17,7 +17,7 @@ type Config struct {
 	FlushTimeout           time.Duration `json:"flush_timeout"            koanf:"flush_timeout"`
 	ClientName             string        `json:"client_name"              koanf:"client_name"`
 	Region                 string        `json:"region"                   koanf:"region"`
-	MaxReconnection        int           `json:"max_reconnection" koanf:"max_reconnection"`
+	MaxReconnection        int           `json:"max_reconnection"         koanf:"max_reconnection"`
 }
 
 type Stream struct {
