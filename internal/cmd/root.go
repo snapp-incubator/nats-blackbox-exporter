@@ -38,7 +38,7 @@ func Execute() {
 				fx.Provide(metric.Provide),
 				fx.Provide(client.Provide),
 				fx.Invoke(func() {
-					pterm.DefaultBigText.WithLetters(
+					_ = pterm.DefaultBigText.WithLetters(
 						putils.LettersFromStringWithStyle("P", pterm.FgCyan.ToStyle()),
 						putils.LettersFromStringWithStyle("Term", pterm.FgLightMagenta.ToStyle()),
 					).Render()

@@ -3,6 +3,8 @@ package config
 import (
 	"time"
 
+	"go.uber.org/fx"
+
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/client"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/logger"
 	"github.com/snapp-incubator/nats-blackbox-exporter/internal/metric"
@@ -12,6 +14,7 @@ import (
 // nolint: mnd
 func Default() Config {
 	return Config{
+		Out: fx.Out{},
 		Logger: logger.Config{
 			Level: "debug",
 		},
