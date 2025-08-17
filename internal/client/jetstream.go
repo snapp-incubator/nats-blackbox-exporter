@@ -457,6 +457,8 @@ func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Mess
 }
 
 // connect connects create a nats core connection and fills its field.
+// in case of any connection failure at initiazation, we will panics
+// because there is no connection to retry, etc.
 func (client *Client) connect() {
 	var err error
 	if client.connection, err = nats.Connect(client.config.URL); err != nil {
