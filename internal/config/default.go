@@ -31,6 +31,7 @@ func Default() Config {
 			FlushTimeout:           2 * time.Second,
 			ClientName:             "localhost",
 			Region:                 "-",
+			MaxReconnection:        100,
 		},
 		Metric: metric.Config{
 			Server:  metric.Server{Address: ":8080"},

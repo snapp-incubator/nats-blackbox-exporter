@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"slices"
 	"time"
 
@@ -264,33 +265,33 @@ func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived ch
 
 			if err := json.Unmarshal(msg.Data, &payload); err != nil {
 				client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
-					zap.String("subject", msg.Subject),
-					zap.Error(err),
-				)
+				zap.String("subject", msg.Subject),
+				zap.Error(err),
+			)
 
-				continue
-			}
-
-			latency := time.Since(payload.PublishTime).Seconds()
-
-			client.metrics.Latency.With(prometheus.Labels{
-				"subject": msg.Subject,
-				"stream":  stream.Name,
-				"cluster": clusterName,
-				"region":  payload.Region,
-			}).Observe(latency)
-
-			client.metrics.SuccessCounter.With(prometheus.Labels{
-				"subject": msg.Subject,
-				"type":    successfulSubscribe,
-				"stream":  stream.Name,
-				"cluster": clusterName,
-				"region":  payload.Region,
-			}).Add(1)
-
-			client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
+			continue
 		}
+
+		latency := time.Since(payload.PublishTime).Seconds()
+
+		client.metrics.Latency.With(prometheus.Labels{
+			"subject": msg.Subject,
+			"stream":  stream.Name,
+			"cluster": clusterName,
+			"region":  payload.Region,
+		}).Observe(latency)
+
+		client.metrics.SuccessCounter.With(prometheus.Labels{
+			"subject": msg.Subject,
+			"type":    successfulSubscribe,
+			"stream":  stream.Name,
+			"cluster": clusterName,
+			"region":  payload.Region,
+		}).Add(1)
+
+		client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 	}
+}
 }
 
 func (client *Client) coreSubscribe(subject string) {
@@ -307,32 +308,32 @@ func (client *Client) coreSubscribe(subject string) {
 
 		if err := json.Unmarshal(msg.Data, &payload); err != nil {
 			client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
-				zap.String("subject", msg.Subject),
-				zap.Error(err),
-			)
+			zap.String("subject", msg.Subject),
+			zap.Error(err),
+		)
 
-			continue
-		}
-
-		latency := time.Since(payload.PublishTime).Seconds()
-
-		client.metrics.Latency.With(prometheus.Labels{
-			"subject": subject,
-			"stream":  "-",
-			"cluster": clusterName,
-			"region":  payload.Region,
-		}).Observe(latency)
-
-		client.metrics.SuccessCounter.With(prometheus.Labels{
-			"subject": subject,
-			"stream":  "-",
-			"type":    successfulSubscribe,
-			"cluster": clusterName,
-			"region":  payload.Region,
-		}).Add(1)
-
-		client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
+		continue
 	}
+
+	latency := time.Since(payload.PublishTime).Seconds()
+
+	client.metrics.Latency.With(prometheus.Labels{
+		"subject": subject,
+		"stream":  "-",
+		"cluster": clusterName,
+		"region":  payload.Region,
+	}).Observe(latency)
+
+	client.metrics.SuccessCounter.With(prometheus.Labels{
+		"subject": subject,
+		"stream":  "-",
+		"type":    successfulSubscribe,
+		"cluster": clusterName,
+		"region":  payload.Region,
+	}).Add(1)
+
+	client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
+}
 }
 
 func (client *Client) corePublish(subject string) {
@@ -460,20 +461,31 @@ func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Mess
 // in case of any connection failure at initiazation, we will panics
 // because there is no connection to retry, etc.
 func (client *Client) connect() {
-	var err error
-	if client.connection, err = nats.Connect(client.config.URL); err != nil {
-		client.logger.Panic("could not connect to nats", zap.Error(err))
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "nats-blackbox-exporter"
 	}
 
-	client.connection.SetDisconnectErrHandler(func(_ *nats.Conn, err error) {
-		client.metrics.Connection.WithLabelValues("disconnection").Add(1)
-		client.logger.Error("nats disconnected", zap.Error(err))
-	})
-
-	client.connection.SetReconnectHandler(func(_ *nats.Conn) {
-		client.logger.Warn("nats reconnected")
-		client.metrics.Connection.WithLabelValues("reconnection").Add(1)
-	})
+	if client.connection, err = nats.Connect(
+		client.config.URL,
+		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			client.metrics.Connection.WithLabelValues("disconnection").Add(1)
+			client.logger.Error("nats disconnected", zap.Error(err))
+		}),
+		nats.ReconnectErrHandler(func(_ *nats.Conn, err error) {
+			client.logger.Info("nats reconnection failed", zap.Error(err))
+			client.metrics.Connection.WithLabelValues("reconnection-failure").Add(1)
+		}),
+		nats.ReconnectHandler(func(_ *nats.Conn) {
+			client.logger.Info("nats reconnected")
+			client.metrics.Connection.WithLabelValues("reconnection").Add(1)
+		}),
+		nats.MaxReconnects(client.config.MaxReconnection),
+		nats.Name(hostname),
+		nats.RetryOnFailedConnect(true),
+	); err != nil {
+		client.logger.Panic("could not connect to nats", zap.Error(err))
+	}
 }
 
 // connectJetstream create a jetstream connection using already connected nats conntion and fills its field.
