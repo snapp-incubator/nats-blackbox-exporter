@@ -37,7 +37,7 @@ func Execute() {
 				fx.Provide(logger.Provide),
 				fx.Provide(metric.Provide),
 				fx.Provide(client.Provide),
-				fx.Invoke(func() {
+				fx.Invoke(func(_ *client.Client, _ metric.ServerInfo) {
 					_ = pterm.DefaultBigText.WithLetters(
 						putils.LettersFromStringWithStyle("NATS", pterm.FgCyan.ToStyle()),
 						putils.LettersFromStringWithStyle(" BlackBox", pterm.FgLightMagenta.ToStyle()),
