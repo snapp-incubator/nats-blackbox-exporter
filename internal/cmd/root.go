@@ -23,9 +23,9 @@ func Execute() {
 	root := &cli.Command{
 		Name:        "nats-blackbox-exporter",
 		Description: "ping pong with nats broker to make sure it is up and running",
-		Flags:       []cli.Flag{
+		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name: "configPath",
+				Name:  "configPath",
 				Value: "./config.yaml",
 				Usage: "Path to config file",
 			},
@@ -39,8 +39,9 @@ func Execute() {
 				fx.Provide(client.Provide),
 				fx.Invoke(func() {
 					_ = pterm.DefaultBigText.WithLetters(
-						putils.LettersFromStringWithStyle("P", pterm.FgCyan.ToStyle()),
-						putils.LettersFromStringWithStyle("Term", pterm.FgLightMagenta.ToStyle()),
+						putils.LettersFromStringWithStyle("NATS", pterm.FgCyan.ToStyle()),
+						putils.LettersFromStringWithStyle(" BlackBox", pterm.FgLightMagenta.ToStyle()),
+						putils.LettersFromStringWithStyle(" Exporter", pterm.FgLightMagenta.ToStyle()),
 					).Render()
 				}),
 			).Run()
