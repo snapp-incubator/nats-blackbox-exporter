@@ -14,6 +14,9 @@ nats:
   max_pub_acks_inflight: 1000
   queue_subscription_group: "group"
   flush_timeout: 2s
+  max_retries: 10
+  retry_delay: 5s
+  retry_backoff_multiplier: 2.0
 
 metric:
   server:

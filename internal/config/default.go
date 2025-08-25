@@ -32,6 +32,9 @@ func Default() Config {
 			ClientName:             "localhost",
 			Region:                 "-",
 			MaxReconnection:        100,
+			MaxRetries:             10,
+			RetryDelay:             5 * time.Second,
+			RetryBackoffMultiplier: 2.0,
 		},
 		Metric: metric.Config{
 			Server:  metric.Server{Address: ":8080"},
