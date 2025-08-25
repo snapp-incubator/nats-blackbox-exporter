@@ -151,26 +151,24 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 	client.logger.Info("add new stream")
 }
 
-func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream *Stream) {
-	var payload Payload
-
-	clusterName := client.connection.ConnectedClusterName()
-	ctx, baseCancel := context.WithCancel(context.Background())
-
+func (client *Client) createRetryCancelFunction(parentCtx context.Context, stream *Stream, clusterName string, payload Payload, baseCancel context.CancelFunc) context.CancelFunc {
 	// Check retry count before proceeding
 	client.retryMutex.Lock()
+
 	currentRetries := client.retryCounts[stream.Name]
 	if currentRetries >= client.config.MaxRetries {
 		client.logger.Error("Max retries exceeded for stream, giving up",
 			zap.String("stream", stream.Name),
 			zap.Int("retries", currentRetries),
 			zap.Int("max_retries", client.config.MaxRetries))
+
 		client.retryMutex.Unlock()
-		return
+
+		return baseCancel
 	}
 	client.retryMutex.Unlock()
 
-	customCancel := func() {
+	return func() {
 		client.logger.Info("Cancel function called for stream", zap.String("stream", stream.Name))
 		client.metrics.StreamRestart.With(prometheus.Labels{
 			"stream":  stream.Name,
@@ -202,40 +200,56 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 			client.setupPublishAndSubscribe(parentCtx, stream)
 		}()
 	}
+}
+
+func (client *Client) handleSubscriptionError(parentCtx context.Context, stream *Stream, err error) {
+	client.logger.Error("Failed to subscribe to stream", zap.String("stream", stream.Name), zap.Error(err))
+
+	// Increment retry count
+	client.retryMutex.Lock()
+	client.retryCounts[stream.Name]++
+	retryCount := client.retryCounts[stream.Name]
+	client.retryMutex.Unlock()
+
+	// Check if we've exceeded max retries
+	if retryCount >= client.config.MaxRetries {
+		client.logger.Error("Max retries exceeded for stream, giving up",
+			zap.String("stream", stream.Name),
+			zap.Int("retries", retryCount),
+			zap.Int("max_retries", client.config.MaxRetries))
+
+		return
+	}
+
+	// Calculate delay with exponential backoff
+	delay := time.Duration(float64(client.config.RetryDelay) *
+		client.config.RetryBackoffMultiplier * float64(retryCount-1))
+
+	client.logger.Info("Scheduling retry for stream",
+		zap.String("stream", stream.Name),
+		zap.Int("retry", retryCount),
+		zap.Duration("delay", delay))
+
+	// Schedule retry for this stream
+	go func() {
+		time.Sleep(delay)
+		client.setupPublishAndSubscribe(parentCtx, stream)
+	}()
+}
+
+func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream *Stream) {
+	var payload Payload
+
+	clusterName := client.connection.ConnectedClusterName()
+	//nolint:govet
+	ctx, baseCancel := context.WithCancel(context.Background())
+
+	customCancel := client.createRetryCancelFunction(parentCtx, stream, clusterName, payload, baseCancel)
 
 	messageChannel, err := client.createSubscribe(ctx, stream) //nolint:contextcheck
 	if err != nil {
-		client.logger.Error("Failed to subscribe to stream", zap.String("stream", stream.Name), zap.Error(err))
+		client.handleSubscriptionError(parentCtx, stream, err)
 
-		// Increment retry count
-		client.retryMutex.Lock()
-		client.retryCounts[stream.Name]++
-		retryCount := client.retryCounts[stream.Name]
-		client.retryMutex.Unlock()
-
-		// Check if we've exceeded max retries
-		if retryCount >= client.config.MaxRetries {
-			client.logger.Error("Max retries exceeded for stream, giving up",
-				zap.String("stream", stream.Name),
-				zap.Int("retries", retryCount),
-				zap.Int("max_retries", client.config.MaxRetries))
-			return
-		}
-
-		// Calculate delay with exponential backoff
-		delay := time.Duration(float64(client.config.RetryDelay) *
-			client.config.RetryBackoffMultiplier * float64(retryCount-1))
-
-		client.logger.Info("Scheduling retry for stream",
-			zap.String("stream", stream.Name),
-			zap.Int("retry", retryCount),
-			zap.Duration("delay", delay))
-
-		// Schedule retry for this stream
-		go func() {
-			time.Sleep(delay)
-			client.setupPublishAndSubscribe(parentCtx, stream)
-		}()
 		return
 	}
 
@@ -282,11 +296,13 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-ch
 	)
 	if err != nil {
 		client.logger.Error("Create consumer failed", zap.String("stream", stream.Name), zap.Error(err))
+
 		return nil, err
 	}
 
 	if _, err := con.Consume(messageHandler); err != nil {
 		client.logger.Error("Consuming failed", zap.String("stream", stream.Name), zap.Error(err))
+
 		return nil, err
 	}
 
@@ -347,6 +363,7 @@ func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived ch
 					zap.String("subject", msg.Subject),
 					zap.Error(err),
 				)
+
 				continue
 			}
 
@@ -545,6 +562,7 @@ func (client *Client) resetRetryCount(streamName string) {
 		client.logger.Info("Resetting retry count for stream",
 			zap.String("stream", streamName),
 			zap.Int("previous_retries", client.retryCounts[streamName]))
+
 		client.retryCounts[streamName] = 0
 	}
 }
