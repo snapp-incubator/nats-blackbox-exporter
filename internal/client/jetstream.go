@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"sync"
@@ -166,6 +167,7 @@ func (client *Client) createRetryCancelFunction(parentCtx context.Context, strea
 
 		return baseCancel
 	}
+
 	client.retryMutex.Unlock()
 
 	return func() {
@@ -297,13 +299,13 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-ch
 	if err != nil {
 		client.logger.Error("Create consumer failed", zap.String("stream", stream.Name), zap.Error(err))
 
-		return nil, err
+		return nil, fmt.Errorf("failed to create or update consumer: %w", err)
 	}
 
 	if _, err := con.Consume(messageHandler); err != nil {
 		client.logger.Error("Consuming failed", zap.String("stream", stream.Name), zap.Error(err))
 
-		return nil, err
+		return nil, fmt.Errorf("failed to consume messages: %w", err)
 	}
 
 	client.logger.Info("Subscribed to stream successfully", zap.String("stream", stream.Name), zap.String("subject", stream.Subject))
@@ -553,7 +555,7 @@ func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Mess
 	}, ch
 }
 
-// resetRetryCount resets the retry count for a stream when it's working properly
+// resetRetryCount resets the retry count for a stream when it's working properly.
 func (client *Client) resetRetryCount(streamName string) {
 	client.retryMutex.Lock()
 	defer client.retryMutex.Unlock()
