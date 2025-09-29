@@ -12,7 +12,7 @@ type Config struct {
 	Level string `json:"level,omitempty" koanf:"level"`
 }
 
-// New creates a zap logger for console.
+// Provide creates a zap logger for console.
 func Provide(cfg Config) *zap.Logger {
 	var lvl zapcore.Level
 	if err := lvl.Set(cfg.Level); err != nil {

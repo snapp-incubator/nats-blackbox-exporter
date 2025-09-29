@@ -57,8 +57,7 @@ func newCounterVec(counterOpts prometheus.CounterOpts, labelNames []string) prom
 	return *ev
 }
 
-// nolint: funlen
-func NewMetrics(conn string) Metrics {
+func NewMetrics(conn string) Metrics { // nolint: funlen
 	latencyBuckets := []float64{
 		0.001,
 		0.0015,

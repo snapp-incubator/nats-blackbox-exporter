@@ -34,7 +34,7 @@ type (
 	}
 )
 
-// New reads configuration with koanf.
+// Provide reads configuration with koanf.
 func Provide(configPath string) Config {
 	var instance Config
 
