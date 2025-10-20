@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -42,6 +44,10 @@ type Client struct {
 
 	logger  *zap.Logger
 	metrics Metrics
+
+	// retryCounts keeps track of restart attempts per stream name
+	retryCounts map[string]int
+	retryMu     sync.Mutex
 }
 
 // Provide initializes NATS connection.
@@ -52,11 +58,12 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) *Client {
 	}
 
 	client := &Client{
-		jetstream:  nil,
-		connection: nil,
-		config:     config,
-		logger:     logger,
-		metrics:    NewMetrics(conn),
+		jetstream:   nil,
+		connection:  nil,
+		config:      config,
+		logger:      logger,
+		metrics:     NewMetrics(conn),
+		retryCounts: make(map[string]int),
 	}
 
 	client.connect()
@@ -157,11 +164,45 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 			"cluster": clusterName,
 			"region":  payload.Region,
 		}).Add(1)
+
+		// increment retry count and decide whether to retry based on limits
+		client.retryMu.Lock()
+		currentRetry := client.retryCounts[stream.Name]
+		client.retryCounts[stream.Name] = currentRetry + 1
+		client.retryMu.Unlock()
+
 		baseCancel()
-		client.setupPublishAndSubscribe(parentCtx, stream)
+
+		if client.config.MaxRetries > 0 && currentRetry+1 > client.config.MaxRetries {
+			client.logger.Warn("Max retry reached, will not restart stream",
+				zap.String("stream", stream.Name),
+				zap.Int("retries", currentRetry+1))
+			return
+		}
+
+		// calculate wait with exponential backoff and optional multiplier cap
+		multiplier := client.config.RetryBackoffMultiplier
+		if multiplier <= 0 {
+			multiplier = 1
+		}
+		backoffFactor := math.Pow(multiplier, float64(currentRetry))
+		wait := time.Duration(backoffFactor * float64(client.config.RetryDelay))
+
+		client.logger.Info("Waiting before restart",
+			zap.String("stream", stream.Name),
+			zap.Duration("wait", wait),
+			zap.Int("retry", currentRetry+1))
+
+		time.Sleep(wait)
+
+		go client.setupPublishAndSubscribe(parentCtx, stream)
 	}
 
-	messageChannel := client.createSubscribe(ctx, stream) //nolint:contextcheck
+	messageChannel, err := client.createSubscribe(ctx, stream) //nolint:contextcheck
+	if err != nil {
+		customCancel()
+		return
+	}
 	messageReceived := make(chan struct{})
 
 	go client.jetstreamPublish(ctx, stream) //nolint:contextcheck
@@ -189,7 +230,7 @@ func (client *Client) StartBlackboxTest(ctx context.Context) {
 }
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages.
-func (client *Client) createSubscribe(ctx context.Context, stream *Stream) <-chan *Message {
+func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-chan *Message, error) {
 	messageHandler, h := client.messageHandlerJetstreamFactory()
 
 	con, err := client.jetstream.CreateOrUpdateConsumer(
@@ -204,16 +245,20 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) <-cha
 		},
 	)
 	if err != nil {
-		client.logger.Panic("Create consumer failed", zap.Error(err))
+		client.logger.Error("Create consumer failed", zap.Error(err))
+		// return handler channel so health check can detect stall and retry
+		return h, err
 	}
 
 	if _, err := con.Consume(messageHandler); err != nil {
-		client.logger.Panic("Consuming failed", zap.Error(err))
+		client.logger.Error("Consuming failed", zap.Error(err))
+		// return handler channel so health check can detect stall and retry
+		return h, err
 	}
 
 	client.logger.Info("Subscribed to %s successfully", zap.String("subject", stream.Subject))
 
-	return h
+	return h, nil
 }
 
 func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.CancelFunc, stream *Stream, messageReceived <-chan struct{}) {
@@ -234,7 +279,6 @@ func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.Ca
 		case <-timer.C:
 			client.logger.Warn("No message received in", zap.Duration("seconds", waitTime), zap.String("stream", stream.Name))
 			cancelFunc()
-			client.setupPublishAndSubscribe(ctx, stream)
 
 			return
 		}

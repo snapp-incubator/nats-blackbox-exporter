@@ -33,7 +33,7 @@ func Default() Config {
 			Region:                 "-",
 			MaxReconnection:        100,
 			MaxRetries:             10,
-			RetryDelay:             5 * time.Second,
+			RetryDelay:             1 * time.Second,
 			RetryBackoffMultiplier: 2.0,
 		},
 		Metric: metric.Config{
