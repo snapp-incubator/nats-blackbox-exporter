@@ -205,8 +205,10 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 	messageChannel, err := client.createSubscribe(ctx, stream) //nolint:contextcheck
 	if err != nil {
 		customCancel()
+
 		return
 	}
+
 	messageReceived := make(chan struct{})
 
 	go client.jetstreamPublish(ctx, stream) //nolint:contextcheck
