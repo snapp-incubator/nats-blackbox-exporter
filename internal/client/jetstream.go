@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"slices"
@@ -64,6 +65,7 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) *Client {
 		logger:      logger,
 		metrics:     NewMetrics(conn),
 		retryCounts: make(map[string]int),
+		retryMu:     sync.Mutex{},
 	}
 
 	client.connect()
@@ -177,6 +179,7 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 			client.logger.Warn("Max retry reached, will not restart stream",
 				zap.String("stream", stream.Name),
 				zap.Int("retries", currentRetry+1))
+
 			return
 		}
 
@@ -185,6 +188,7 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 		if multiplier <= 0 {
 			multiplier = 1
 		}
+
 		backoffFactor := math.Pow(multiplier, float64(currentRetry))
 		wait := time.Duration(backoffFactor * float64(client.config.RetryDelay))
 
@@ -247,13 +251,13 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-ch
 	if err != nil {
 		client.logger.Error("Create consumer failed", zap.Error(err))
 		// return handler channel so health check can detect stall and retry
-		return h, err
+		return h, fmt.Errorf("create consumer failed: %w", err)
 	}
 
 	if _, err := con.Consume(messageHandler); err != nil {
 		client.logger.Error("Consuming failed", zap.Error(err))
 		// return handler channel so health check can detect stall and retry
-		return h, err
+		return h, fmt.Errorf("consume failed: %w", err)
 	}
 
 	client.logger.Info("Subscribed to %s successfully", zap.String("subject", stream.Subject))
@@ -276,6 +280,10 @@ func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.Ca
 
 			timer.Reset(waitTime)
 
+		case <-ctx.Done():
+			client.logger.Info("Health checker context canceled", zap.String("stream", stream.Name))
+
+			return
 		case <-timer.C:
 			client.logger.Warn("No message received in", zap.Duration("seconds", waitTime), zap.String("stream", stream.Name))
 			cancelFunc()
