@@ -225,7 +225,7 @@ func (client *Client) StartBlackboxTest(_ context.Context) {
 
 	if client.config.IsJetstream {
 		for _, stream := range client.config.Streams {
-			client.setupPublishAndSubscribe(&stream)
+			client.setupPublishAndSubscribe(&stream) //nolint:contextcheck // it's ok to not pass context here because we are not using it
 		}
 	} else {
 		for _, stream := range client.config.Streams {
@@ -274,6 +274,7 @@ func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.Ca
 
 	defer func() {
 		timer.Stop()
+
 		if consumeCtx != nil {
 			consumeCtx.Stop()
 		}
