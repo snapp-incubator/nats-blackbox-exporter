@@ -153,7 +153,7 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 	client.logger.Info("add new stream")
 }
 
-func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream *Stream) {
+func (client *Client) setupPublishAndSubscribe(stream *Stream) {
 	var payload Payload
 
 	clusterName := client.connection.ConnectedClusterName()
@@ -199,10 +199,10 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 
 		time.Sleep(wait)
 
-		go client.setupPublishAndSubscribe(parentCtx, stream)
+		go client.setupPublishAndSubscribe(stream)
 	}
 
-	messageChannel, err := client.createSubscribe(ctx, stream) //nolint:contextcheck
+	messageChannel, consumeCtx, err := client.createSubscribe(ctx, stream) //nolint:contextcheck
 	if err != nil {
 		customCancel()
 
@@ -215,17 +215,17 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 
 	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream) //nolint:contextcheck
 
-	go client.subscribeHealth(ctx, customCancel, stream, messageReceived) //nolint:contextcheck
+	go client.subscribeHealth(ctx, customCancel, stream, messageReceived, consumeCtx) //nolint:contextcheck
 }
 
-func (client *Client) StartBlackboxTest(ctx context.Context) {
+func (client *Client) StartBlackboxTest(_ context.Context) {
 	if len(client.config.Streams) == 0 {
 		client.logger.Panic("at least one stream is required.")
 	}
 
 	if client.config.IsJetstream {
 		for _, stream := range client.config.Streams {
-			client.setupPublishAndSubscribe(ctx, &stream)
+			client.setupPublishAndSubscribe(&stream)
 		}
 	} else {
 		for _, stream := range client.config.Streams {
@@ -236,7 +236,7 @@ func (client *Client) StartBlackboxTest(ctx context.Context) {
 }
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages.
-func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-chan *Message, error) {
+func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-chan *Message, jetstream.ConsumeContext, error) {
 	messageHandler, h := client.messageHandlerJetstreamFactory()
 
 	con, err := client.jetstream.CreateOrUpdateConsumer(
@@ -253,25 +253,31 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-ch
 	if err != nil {
 		client.logger.Error("Create consumer failed", zap.Error(err))
 		// return handler channel so health check can detect stall and retry
-		return h, fmt.Errorf("create consumer failed: %w", err)
+		return h, nil, fmt.Errorf("create consumer failed: %w", err)
 	}
 
-	if _, err := con.Consume(messageHandler); err != nil {
+	consumeCtx, err := con.Consume(messageHandler)
+	if err != nil {
 		client.logger.Error("Consuming failed", zap.Error(err))
 		// return handler channel so health check can detect stall and retry
-		return h, fmt.Errorf("consume failed: %w", err)
+		return h, nil, fmt.Errorf("consume failed: %w", err)
 	}
 
 	client.logger.Info("Subscribed to %s successfully", zap.String("subject", stream.Subject))
 
-	return h, nil
+	return h, consumeCtx, nil
 }
 
-func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.CancelFunc, stream *Stream, messageReceived <-chan struct{}) {
+func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.CancelFunc, stream *Stream, messageReceived <-chan struct{}, consumeCtx jetstream.ConsumeContext) {
 	waitTime := subscribeHealthMultiplication * client.config.PublishInterval
 	timer := time.NewTimer(waitTime)
 
-	defer timer.Stop()
+	defer func() {
+		timer.Stop()
+		if consumeCtx != nil {
+			consumeCtx.Stop()
+		}
+	}()
 
 	for {
 		select {
