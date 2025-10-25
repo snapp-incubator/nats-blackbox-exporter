@@ -7,6 +7,9 @@ data:
     logger:
       level: {{ .Values.logLevel | quote}}
     nats:
+      max_retries: {{ .Values.nats.max_retries }}
+      retry_delay: {{ .Values.nats.retry_delay }}
+      retry_backoff_multiplier: {{ .Values.nats.retry_backoff_multiplier }}
       is_jetstream: {{ .Values.nats.is_jetstream }}
       streams: {{ .Values.nats.streams | toYaml | nindent 8 }}
       url: {{ tpl (.Values.nats.url | toString) $ }}
