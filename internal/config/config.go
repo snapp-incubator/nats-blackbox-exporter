@@ -28,9 +28,9 @@ type (
 	Config struct {
 		fx.Out
 
-		Logger logger.Config `json:"logger,omitempty" koanf:"logger"`
-		NATS   client.Config `json:"nats,omitempty"   koanf:"nats"`
-		Metric metric.Config `json:"metric,omitempty" koanf:"metric"`
+		Logger logger.Config `json:"logger" koanf:"logger"`
+		NATS   client.Config `json:"nats"   koanf:"nats"`
+		Metric metric.Config `json:"metric" koanf:"metric"`
 	}
 )
 
