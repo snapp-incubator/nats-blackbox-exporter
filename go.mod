@@ -9,7 +9,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/pterm/pterm v0.12.82
 	github.com/tidwall/pretty v1.2.1
-	github.com/urfave/cli/v3 v3.6.1
+	github.com/urfave/cli/v3 v3.6.2
 	go.uber.org/fx v1.24.0
 	go.uber.org/zap v1.27.1
 )
