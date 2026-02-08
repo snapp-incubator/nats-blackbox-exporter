@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -12,49 +13,48 @@ import (
 
 // ServerInfo contains information about metrics server.
 type ServerInfo struct {
-	srv     *http.ServeMux
-	address string
+	server *http.Server
 }
 
 // Provide creates a new monitoring server.
+// nolint: mnd
 func Provide(lc fx.Lifecycle, cfg Config, logger *zap.Logger) ServerInfo {
-	var srv *http.ServeMux
+	s := ServerInfo{} //nolint:exhaustruct
 
 	if cfg.Enabled {
-		srv = http.NewServeMux()
-		srv.Handle("/metrics", promhttp.Handler())
-	}
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
 
-	s := ServerInfo{
-		address: cfg.Server.Address,
-		srv:     srv,
-	}
-
-	lc.Append(
-		fx.StartHook(func() {
-			s.Start(logger)
-		}),
-	)
-
-	return s
-}
-
-// Start creates and run a metric server for prometheus in new go routine.
-// nolint: mnd
-func (s ServerInfo) Start(logger *zap.Logger) {
-	go func() {
 		// nolint: exhaustruct
-		srv := http.Server{
-			Addr:         s.address,
-			Handler:      s.srv,
+		s.server = &http.Server{
+			Addr:         cfg.Server.Address,
+			Handler:      mux,
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  30 * time.Second,
-			TLSConfig:    nil,
 		}
+	}
 
-		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("metric server initiation failed", zap.Error(err))
-		}
-	}()
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			if s.server != nil {
+				go func() {
+					if err := s.server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+						logger.Error("metric server initiation failed", zap.Error(err))
+					}
+				}()
+			}
+
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			if s.server != nil {
+				return s.server.Shutdown(ctx)
+			}
+
+			return nil
+		},
+	})
+
+	return s
 }

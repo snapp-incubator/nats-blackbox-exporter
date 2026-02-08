@@ -49,6 +49,10 @@ type Client struct {
 	// retryCounts keeps track of restart attempts per stream name
 	retryCounts map[string]int
 	retryMu     sync.Mutex
+
+	// ctx and cancel control the lifetime of background goroutines (e.g. core publish/subscribe).
+	ctx    context.Context    //nolint:containedctx
+	cancel context.CancelFunc
 }
 
 // Provide initializes NATS connection.
@@ -58,6 +62,8 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) *Client {
 		conn = "core"
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	client := &Client{
 		jetstream:   nil,
 		connection:  nil,
@@ -66,6 +72,8 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) *Client {
 		metrics:     NewMetrics(conn),
 		retryCounts: make(map[string]int),
 		retryMu:     sync.Mutex{},
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 
 	client.connect()
@@ -76,15 +84,26 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) *Client {
 		client.updateOrCreateStream(context.Background())
 	}
 
-	lc.Append(fx.StartHook(func(ctx context.Context) {
-		client.StartBlackboxTest(ctx)
-	}))
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			client.StartBlackboxTest() //nolint:contextcheck
+
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			client.Close()
+
+			return nil
+		},
+	})
 
 	return client
 }
 
-// Close closes NATS connection.
+// Close cancels background goroutines and closes the NATS connection.
 func (client *Client) Close() {
+	client.cancel()
+
 	if err := client.connection.FlushTimeout(client.config.FlushTimeout); err != nil {
 		client.logger.Error("could not flush", zap.Error(err))
 	}
@@ -98,6 +117,10 @@ func (client *Client) updateOrCreateStream(ctx context.Context) {
 		streamNames := client.jetstream.StreamNames(ctx)
 		for stream := range streamNames.Name() {
 			client.config.Streams = append(client.config.Streams, Stream{Name: stream, Subject: ""})
+		}
+
+		if err := streamNames.Err(); err != nil {
+			client.logger.Error("could not list stream names", zap.Error(err))
 		}
 	}
 
@@ -154,8 +177,6 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 }
 
 func (client *Client) setupPublishAndSubscribe(stream *Stream) {
-	var payload Payload
-
 	clusterName := client.connection.ConnectedClusterName()
 	ctx, baseCancel := context.WithCancel(context.Background())
 
@@ -164,7 +185,7 @@ func (client *Client) setupPublishAndSubscribe(stream *Stream) {
 		client.metrics.StreamRestart.With(prometheus.Labels{
 			"stream":  stream.Name,
 			"cluster": clusterName,
-			"region":  payload.Region,
+			"region":  client.config.Region,
 		}).Add(1)
 
 		// increment retry count and decide whether to retry based on limits
@@ -197,9 +218,11 @@ func (client *Client) setupPublishAndSubscribe(stream *Stream) {
 			zap.Duration("wait", wait),
 			zap.Int("retry", currentRetry+1))
 
-		time.Sleep(wait)
-
-		go client.setupPublishAndSubscribe(stream)
+		// sleep and restart in a separate goroutine to avoid blocking the health checker
+		go func() {
+			time.Sleep(wait)
+			client.setupPublishAndSubscribe(stream)
+		}()
 	}
 
 	messageChannel, consumeCtx, err := client.createSubscribe(ctx, stream) //nolint:contextcheck
@@ -218,19 +241,19 @@ func (client *Client) setupPublishAndSubscribe(stream *Stream) {
 	go client.subscribeHealth(ctx, customCancel, stream, messageReceived, consumeCtx) //nolint:contextcheck
 }
 
-func (client *Client) StartBlackboxTest(_ context.Context) {
+func (client *Client) StartBlackboxTest() {
 	if len(client.config.Streams) == 0 {
 		client.logger.Panic("at least one stream is required.")
 	}
 
 	if client.config.IsJetstream {
 		for _, stream := range client.config.Streams {
-			client.setupPublishAndSubscribe(&stream) //nolint:contextcheck // it's ok to not pass context here because we are not using it
+			client.setupPublishAndSubscribe(&stream) //nolint:contextcheck
 		}
 	} else {
 		for _, stream := range client.config.Streams {
-			go client.coreSubscribe(stream.Subject)
-			go client.corePublish(stream.Subject)
+			go client.coreSubscribe(client.ctx, stream.Subject)
+			go client.corePublish(client.ctx, stream.Subject)
 		}
 	}
 }
@@ -263,7 +286,7 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-ch
 		return h, nil, fmt.Errorf("consume failed: %w", err)
 	}
 
-	client.logger.Info("Subscribed to %s successfully", zap.String("subject", stream.Subject))
+	client.logger.Info("Subscribed successfully", zap.String("subject", stream.Subject))
 
 	return h, consumeCtx, nil
 }
@@ -355,7 +378,7 @@ func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived ch
 	}
 }
 
-func (client *Client) coreSubscribe(subject string) {
+func (client *Client) coreSubscribe(ctx context.Context, subject string) {
 	clusterName := client.connection.ConnectedClusterName()
 
 	messageHandler, h := client.messageHandlerCoreFactory()
@@ -364,80 +387,93 @@ func (client *Client) coreSubscribe(subject string) {
 		client.logger.Panic("Consuming failed", zap.Error(err))
 	}
 
-	for msg := range h {
-		var payload Payload
+	for {
+		select {
+		case <-ctx.Done():
+			client.logger.Info("Context canceled, stopping core subscription", zap.String("subject", subject))
 
-		if err := json.Unmarshal(msg.Data, &payload); err != nil {
-			client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
-				zap.String("subject", msg.Subject),
-				zap.Error(err),
-			)
+			return
+		case msg := <-h:
+			var payload Payload
 
-			continue
+			if err := json.Unmarshal(msg.Data, &payload); err != nil {
+				client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
+					zap.String("subject", msg.Subject),
+					zap.Error(err),
+				)
+
+				continue
+			}
+
+			latency := time.Since(payload.PublishTime).Seconds()
+
+			client.metrics.Latency.With(prometheus.Labels{
+				"subject": subject,
+				"stream":  "-",
+				"cluster": clusterName,
+				"region":  payload.Region,
+			}).Observe(latency)
+
+			client.metrics.SuccessCounter.With(prometheus.Labels{
+				"subject": subject,
+				"stream":  "-",
+				"type":    successfulSubscribe,
+				"cluster": clusterName,
+				"region":  payload.Region,
+			}).Add(1)
+
+			client.logger.Info("Received message", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 		}
-
-		latency := time.Since(payload.PublishTime).Seconds()
-
-		client.metrics.Latency.With(prometheus.Labels{
-			"subject": subject,
-			"stream":  "-",
-			"cluster": clusterName,
-			"region":  payload.Region,
-		}).Observe(latency)
-
-		client.metrics.SuccessCounter.With(prometheus.Labels{
-			"subject": subject,
-			"stream":  "-",
-			"type":    successfulSubscribe,
-			"cluster": clusterName,
-			"region":  payload.Region,
-		}).Add(1)
-
-		client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 	}
 }
 
-func (client *Client) corePublish(subject string) {
+func (client *Client) corePublish(ctx context.Context, subject string) {
 	clusterName := client.connection.ConnectedClusterName()
 
 	for {
-		t, err := json.Marshal(Payload{
-			PublishTime: time.Now(),
-			Region:      client.config.Region,
-		})
-		if err != nil {
-			client.logger.Error("could not marshal current time.", zap.Error(err))
+		select {
+		case <-ctx.Done():
+			client.logger.Info("Context canceled, stopping core publish", zap.String("subject", subject))
 
-			continue
-		}
+			return
+		case <-time.After(client.config.PublishInterval):
+			t, err := json.Marshal(Payload{
+				PublishTime: time.Now(),
+				Region:      client.config.Region,
+			})
+			if err != nil {
+				client.logger.Error("could not marshal current time.", zap.Error(err))
 
-		if err := client.connection.Publish(subject, t); err != nil {
-			client.metrics.SuccessCounter.With(prometheus.Labels{
-				"stream":  "-",
-				"subject": subject,
-				"type":    failedPublish,
-				"cluster": clusterName,
-			}).Add(1)
-
-			switch {
-			case errors.Is(err, nats.ErrTimeout):
-				client.logger.Error("Request timeout: No response received within the timeout period.")
-			case errors.Is(err, nats.ErrNoStreamResponse):
-				client.logger.Error("Request failed: No Stream available for the subject.")
-			default:
-				client.logger.Error("Request failed: %v", zap.Error(err))
+				continue
 			}
-		} else {
-			client.metrics.SuccessCounter.With(prometheus.Labels{
-				"stream":  "-",
-				"type":    successfulPublish,
-				"cluster": clusterName,
-				"subject": subject,
-				"region":  client.config.Region,
-			}).Add(1)
-		}
 
-		time.Sleep(client.config.PublishInterval)
+			if err := client.connection.Publish(subject, t); err != nil {
+				client.metrics.SuccessCounter.With(prometheus.Labels{
+					"stream":  "-",
+					"subject": subject,
+					"type":    failedPublish,
+					"cluster": clusterName,
+					"region":  client.config.Region,
+				}).Add(1)
+
+				switch {
+				case errors.Is(err, nats.ErrTimeout):
+					client.logger.Error("Request timeout: No response received within the timeout period.")
+				case errors.Is(err, nats.ErrNoStreamResponse):
+					client.logger.Error("Request failed: No Stream available for the subject.")
+				default:
+					client.logger.Error("Request failed", zap.Error(err))
+				}
+			} else {
+				client.metrics.SuccessCounter.With(prometheus.Labels{
+					"stream":  "-",
+					"type":    successfulPublish,
+					"cluster": clusterName,
+					"subject": subject,
+					"region":  client.config.Region,
+				}).Add(1)
+			}
+		}
 	}
 }
 
@@ -476,7 +512,7 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 				case errors.Is(err, nats.ErrNoStreamResponse):
 					client.logger.Error("Request failed: No Stream available for the subject.")
 				default:
-					client.logger.Error("Request failed: %v", zap.Error(err))
+					client.logger.Error("Request failed", zap.Error(err))
 				}
 			} else {
 				client.metrics.SuccessCounter.With(prometheus.Labels{
@@ -493,7 +529,7 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 }
 
 func (client *Client) messageHandlerJetstreamFactory() (jetstream.MessageHandler, <-chan *Message) {
-	ch := make(chan *Message)
+	ch := make(chan *Message, 1)
 
 	return func(msg jetstream.Msg) {
 		ch <- &Message{
@@ -508,7 +544,7 @@ func (client *Client) messageHandlerJetstreamFactory() (jetstream.MessageHandler
 }
 
 func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Message) {
-	ch := make(chan *Message)
+	ch := make(chan *Message, 1)
 
 	return func(msg *nats.Msg) {
 		ch <- &Message{
