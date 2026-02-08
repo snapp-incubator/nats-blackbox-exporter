@@ -529,17 +529,17 @@ func (client *Client) connect() {
 
 	if client.connection, err = nats.Connect(
 		client.config.URL,
-		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
-			client.metrics.Connection.WithLabelValues("disconnection").Add(1)
+		nats.DisconnectErrHandler(func(conn *nats.Conn, err error) {
+			client.metrics.Connection.WithLabelValues("disconnection", conn.ConnectedClusterName()).Add(1)
 			client.logger.Error("nats disconnected", zap.Error(err))
 		}),
-		nats.ReconnectErrHandler(func(_ *nats.Conn, err error) {
+		nats.ReconnectErrHandler(func(conn *nats.Conn, err error) {
 			client.logger.Info("nats reconnection failed", zap.Error(err))
-			client.metrics.Connection.WithLabelValues("reconnection-failure").Add(1)
+			client.metrics.Connection.WithLabelValues("reconnection-failure", conn.ConnectedClusterName()).Add(1)
 		}),
-		nats.ReconnectHandler(func(_ *nats.Conn) {
+		nats.ReconnectHandler(func(conn *nats.Conn) {
 			client.logger.Info("nats reconnected")
-			client.metrics.Connection.WithLabelValues("reconnection").Add(1)
+			client.metrics.Connection.WithLabelValues("reconnection", conn.ConnectedClusterName()).Add(1)
 		}),
 		nats.MaxReconnects(client.config.MaxReconnection),
 		nats.Name(hostname),
