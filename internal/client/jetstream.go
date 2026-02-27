@@ -56,7 +56,7 @@ type Client struct {
 }
 
 // Provide initializes NATS connection.
-func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) *Client {
+func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) (*Client, error) {
 	conn := "jetstream"
 	if !config.IsJetstream {
 		conn = "core"
@@ -76,19 +76,21 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) *Client {
 		cancel:      cancel,
 	}
 
-	client.connect()
-
-	if config.IsJetstream {
-		client.connectJetstream()
-
-		client.updateOrCreateStream(context.Background())
-	}
-
 	lc.Append(fx.Hook{
-		OnStart: func(_ context.Context) error {
-			client.StartBlackboxTest() //nolint:contextcheck
+		OnStart: func(ctx context.Context) error {
+			if err := client.connect(); err != nil {
+				return fmt.Errorf("could not connect to nats: %w", err)
+			}
 
-			return nil
+			if config.IsJetstream {
+				if err := client.connectJetstream(); err != nil {
+					return fmt.Errorf("could not connect to jetstream: %w", err)
+				}
+
+				client.updateOrCreateStream(ctx)
+			}
+
+			return client.StartBlackboxTest()
 		},
 		OnStop: func(_ context.Context) error {
 			client.Close()
@@ -97,7 +99,7 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) *Client {
 		},
 	})
 
-	return client
+	return client, nil
 }
 
 // Close cancels background goroutines and closes the NATS connection.
@@ -241,9 +243,9 @@ func (client *Client) setupPublishAndSubscribe(stream *Stream) {
 	go client.subscribeHealth(ctx, customCancel, stream, messageReceived, consumeCtx) //nolint:contextcheck
 }
 
-func (client *Client) StartBlackboxTest() {
+func (client *Client) StartBlackboxTest() error {
 	if len(client.config.Streams) == 0 {
-		client.logger.Panic("at least one stream is required.")
+		return errors.New("at least one stream is required")
 	}
 
 	if client.config.IsJetstream {
@@ -256,6 +258,8 @@ func (client *Client) StartBlackboxTest() {
 			go client.corePublish(client.ctx, stream.Subject)
 		}
 	}
+
+	return nil
 }
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages.
@@ -384,7 +388,10 @@ func (client *Client) coreSubscribe(ctx context.Context, subject string) {
 	messageHandler, h := client.messageHandlerCoreFactory()
 
 	if _, err := client.connection.Subscribe(subject, messageHandler); err != nil {
-		client.logger.Panic("Consuming failed", zap.Error(err))
+		client.logger.Error("Consuming failed, stopping core subscription",
+			zap.String("subject", subject), zap.Error(err))
+
+		return
 	}
 
 	for {
@@ -429,6 +436,9 @@ func (client *Client) coreSubscribe(ctx context.Context, subject string) {
 
 func (client *Client) corePublish(ctx context.Context, subject string) {
 	clusterName := client.connection.ConnectedClusterName()
+	ticker := time.NewTicker(client.config.PublishInterval)
+
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -436,7 +446,7 @@ func (client *Client) corePublish(ctx context.Context, subject string) {
 			client.logger.Info("Context canceled, stopping core publish", zap.String("subject", subject))
 
 			return
-		case <-time.After(client.config.PublishInterval):
+		case <-ticker.C:
 			t, err := json.Marshal(Payload{
 				PublishTime: time.Now(),
 				Region:      client.config.Region,
@@ -479,6 +489,9 @@ func (client *Client) corePublish(ctx context.Context, subject string) {
 
 func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
+	ticker := time.NewTicker(client.config.PublishInterval)
+
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -486,7 +499,7 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 			client.logger.Info("Context canceled, stopping publish", zap.String("stream", stream.Name))
 
 			return
-		case <-time.After(client.config.PublishInterval):
+		case <-ticker.C:
 			t, err := json.Marshal(Payload{
 				PublishTime: time.Now(),
 				Region:      client.config.Region,
@@ -528,36 +541,46 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 	}
 }
 
+const messageChannelBuffer = 128
+
 func (client *Client) messageHandlerJetstreamFactory() (jetstream.MessageHandler, <-chan *Message) {
-	ch := make(chan *Message, 1)
+	ch := make(chan *Message, messageChannelBuffer)
 
 	return func(msg jetstream.Msg) {
-		ch <- &Message{
-			Subject: msg.Subject(),
-			Data:    msg.Data(),
-		}
-
 		if err := msg.Ack(); err != nil {
 			client.logger.Error("Failed to acknowledge the message", zap.Error(err))
+		}
+
+		select {
+		case ch <- &Message{
+			Subject: msg.Subject(),
+			Data:    msg.Data(),
+		}:
+		default:
+			client.logger.Warn("Message channel full, dropping message",
+				zap.String("subject", msg.Subject()))
 		}
 	}, ch
 }
 
 func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Message) {
-	ch := make(chan *Message, 1)
+	ch := make(chan *Message, messageChannelBuffer)
 
 	return func(msg *nats.Msg) {
-		ch <- &Message{
+		select {
+		case ch <- &Message{
 			Subject: msg.Subject,
 			Data:    msg.Data,
+		}:
+		default:
+			client.logger.Warn("Message channel full, dropping message",
+				zap.String("subject", msg.Subject))
 		}
 	}, ch
 }
 
-// connect connects create a nats core connection and fills its field.
-// in case of any connection failure at initiazation, we will panics
-// because there is no connection to retry, etc.
-func (client *Client) connect() {
+// connect creates a nats core connection and fills its field.
+func (client *Client) connect() error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "nats-blackbox-exporter"
@@ -581,14 +604,18 @@ func (client *Client) connect() {
 		nats.Name(hostname),
 		nats.RetryOnFailedConnect(true),
 	); err != nil {
-		client.logger.Panic("could not connect to nats", zap.Error(err))
+		return fmt.Errorf("nats connect: %w", err)
 	}
+
+	return nil
 }
 
-// connectJetstream create a jetstream connection using already connected nats conntion and fills its field.
-func (client *Client) connectJetstream() {
+// connectJetstream creates a jetstream connection using an already connected nats connection.
+func (client *Client) connectJetstream() error {
 	var err error
 	if client.jetstream, err = jetstream.New(client.connection); err != nil {
-		client.logger.Panic("could not connect to jetstream", zap.Error(err))
+		return fmt.Errorf("jetstream connect: %w", err)
 	}
+
+	return nil
 }

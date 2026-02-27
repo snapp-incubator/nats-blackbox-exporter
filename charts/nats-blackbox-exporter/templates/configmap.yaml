@@ -15,8 +15,7 @@ data:
       url: {{ tpl (.Values.nats.url | toString) $ }}
       publish_interval: {{ .Values.nats.publish_interval | quote }}
       request_timeout: {{ .Values.nats.request_timeout | quote }}
-      max_pub_acks_inflight: {{ .Values.nats.rmax_pub_acks_inflight | quote }}
-      queue_subscription_group: {{ .Values.nats.queue_subscription_group | quote }}
+      max_pub_acks_inflight: {{ .Values.nats.max_pub_acks_inflight | quote }}
       flush_timeout: {{ .Values.nats.flush_timeout | quote }}
       new_stream_allow: {{ .Values.nats.new_stream_allow }}
       region: {{ .Values.nats.region }}
