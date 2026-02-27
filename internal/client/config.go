@@ -12,9 +12,9 @@ type Config struct {
 	URL                    string        `json:"url,omitempty"            koanf:"url"`
 	PublishInterval        time.Duration `json:"publish_interval"         koanf:"publish_interval"`
 	RequestTimeout         time.Duration `json:"request_timeout"          koanf:"request_timeout"`
-	MaxPubAcksInflight int           `json:"max_pub_acks_inflight" koanf:"max_pub_acks_inflight"`
-	FlushTimeout       time.Duration `json:"flush_timeout"         koanf:"flush_timeout"`
-	Region             string        `json:"region"                koanf:"region"`
+	MaxPubAcksInflight     int           `json:"max_pub_acks_inflight"    koanf:"max_pub_acks_inflight"`
+	FlushTimeout           time.Duration `json:"flush_timeout"            koanf:"flush_timeout"`
+	Region                 string        `json:"region"                   koanf:"region"`
 	MaxReconnection        int           `json:"max_reconnection"         koanf:"max_reconnection"`
 	MaxRetries             int           `json:"max_retries"              koanf:"max_retries"`
 	RetryDelay             time.Duration `json:"retry_delay"              koanf:"retry_delay"`

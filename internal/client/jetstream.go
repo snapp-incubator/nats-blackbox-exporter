@@ -26,6 +26,9 @@ const (
 	subscribeHealthMultiplication = 10
 )
 
+// ErrNoStreams is returned when no streams are configured for blackbox testing.
+var ErrNoStreams = errors.New("at least one stream is required")
+
 type Payload struct {
 	PublishTime time.Time `json:"publish_time"`
 	Region      string    `json:"region"`
@@ -90,7 +93,7 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) (*Client, error
 				client.updateOrCreateStream(ctx)
 			}
 
-			return client.StartBlackboxTest()
+			return client.StartBlackboxTest(ctx)
 		},
 		OnStop: func(_ context.Context) error {
 			client.Close()
@@ -178,9 +181,9 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 	client.logger.Info("add new stream")
 }
 
-func (client *Client) setupPublishAndSubscribe(stream *Stream) {
+func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
-	ctx, baseCancel := context.WithCancel(context.Background())
+	ctx, baseCancel := context.WithCancel(parentCtx)
 
 	customCancel := func() {
 		client.logger.Info("Cancel function called")
@@ -223,11 +226,11 @@ func (client *Client) setupPublishAndSubscribe(stream *Stream) {
 		// sleep and restart in a separate goroutine to avoid blocking the health checker
 		go func() {
 			time.Sleep(wait)
-			client.setupPublishAndSubscribe(stream)
+			client.setupPublishAndSubscribe(parentCtx, stream)
 		}()
 	}
 
-	messageChannel, consumeCtx, err := client.createSubscribe(ctx, stream) //nolint:contextcheck
+	messageChannel, consumeCtx, err := client.createSubscribe(ctx, stream)
 	if err != nil {
 		customCancel()
 
@@ -236,26 +239,26 @@ func (client *Client) setupPublishAndSubscribe(stream *Stream) {
 
 	messageReceived := make(chan struct{})
 
-	go client.jetstreamPublish(ctx, stream) //nolint:contextcheck
+	go client.jetstreamPublish(ctx, stream)
 
-	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream) //nolint:contextcheck
+	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream)
 
-	go client.subscribeHealth(ctx, customCancel, stream, messageReceived, consumeCtx) //nolint:contextcheck
+	go client.subscribeHealth(ctx, customCancel, stream, messageReceived, consumeCtx)
 }
 
-func (client *Client) StartBlackboxTest() error {
+func (client *Client) StartBlackboxTest(ctx context.Context) error {
 	if len(client.config.Streams) == 0 {
-		return errors.New("at least one stream is required")
+		return ErrNoStreams
 	}
 
 	if client.config.IsJetstream {
 		for _, stream := range client.config.Streams {
-			client.setupPublishAndSubscribe(&stream) //nolint:contextcheck
+			client.setupPublishAndSubscribe(ctx, &stream)
 		}
 	} else {
 		for _, stream := range client.config.Streams {
-			go client.coreSubscribe(client.ctx, stream.Subject)
-			go client.corePublish(client.ctx, stream.Subject)
+			go client.coreSubscribe(ctx, stream.Subject)
+			go client.corePublish(ctx, stream.Subject)
 		}
 	}
 
