@@ -9,7 +9,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/pterm/pterm v0.12.83
 	github.com/tidwall/pretty v1.2.1
-	github.com/urfave/cli/v3 v3.6.2
+	github.com/urfave/cli/v3 v3.7.0
 	go.uber.org/fx v1.24.0
 	go.uber.org/zap v1.27.1
 )
@@ -20,7 +20,6 @@ require (
 	atomicgo.dev/schedule v0.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
