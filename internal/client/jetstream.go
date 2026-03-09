@@ -54,7 +54,7 @@ type Client struct {
 	retryMu     sync.Mutex
 
 	// ctx and cancel control the lifetime of background goroutines (e.g. core publish/subscribe).
-	ctx    context.Context    //nolint:containedctx
+	ctx    context.Context //nolint:containedctx
 	cancel context.CancelFunc
 }
 
@@ -183,7 +183,7 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 
 func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
-	ctx, baseCancel := context.WithCancel(parentCtx)
+	ctx, baseCancel := context.WithCancel(parentCtx) // nolint: gosec
 
 	customCancel := func() {
 		client.logger.Info("Cancel function called")
