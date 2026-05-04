@@ -11,7 +11,7 @@ require (
 	github.com/tidwall/pretty v1.2.1
 	github.com/urfave/cli/v3 v3.8.0
 	go.uber.org/fx v1.24.0
-	go.uber.org/zap v1.27.1
+	go.uber.org/zap v1.28.0
 )
 
 require (
