@@ -11,7 +11,7 @@ nats:
   url: "localhost:4222"
   publish_interval: 2s
   request_timeout: 50ms
-  max_pub_acks_inflight: 1000
+  max_ack_pending: 1000
   flush_timeout: 2s
   max_retries: 10
   retry_delay: 5s

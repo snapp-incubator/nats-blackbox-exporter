@@ -26,7 +26,7 @@ func Default() Config {
 			URL:                    "localhost:4222",
 			PublishInterval:        2 * time.Second,
 			RequestTimeout:         50 * time.Millisecond,
-			MaxPubAcksInflight:     1000,
+			MaxAckPending:          1000,
 			FlushTimeout:           2 * time.Second,
 			Region:                 "-",
 			MaxReconnection:        100,

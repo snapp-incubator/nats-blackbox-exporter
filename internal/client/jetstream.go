@@ -19,9 +19,6 @@ import (
 )
 
 const (
-	successfulSubscribe           = "successful subscribe"
-	failedPublish                 = "failed publish"
-	successfulPublish             = "successful publish"
 	subjectSuffix                 = "_blackbox_exporter"
 	subscribeHealthMultiplication = 10
 )
@@ -72,7 +69,7 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) (*Client, error
 		connection:  nil,
 		config:      config,
 		logger:      logger,
-		metrics:     NewMetrics(conn),
+		metrics:     NewMetrics(conn, config.Region),
 		retryCounts: make(map[string]int),
 		retryMu:     sync.Mutex{},
 		ctx:         ctx,
@@ -108,6 +105,10 @@ func Provide(lc fx.Lifecycle, config Config, logger *zap.Logger) (*Client, error
 // Close cancels background goroutines and closes the NATS connection.
 func (client *Client) Close() {
 	client.cancel()
+
+	if client.connection == nil {
+		return
+	}
 
 	if err := client.connection.FlushTimeout(client.config.FlushTimeout); err != nil {
 		client.logger.Error("could not flush", zap.Error(err))
@@ -153,20 +154,19 @@ func (client *Client) updateOrCreateStream(ctx context.Context) {
 }
 
 func (client *Client) updateStream(ctx context.Context, stream Stream, info *jetstream.StreamInfo) {
-	subjects := make([]string, len(info.Config.Subjects)+1)
-	copy(subjects, info.Config.Subjects)
-	subjects[len(info.Config.Subjects)] = stream.Subject
+	subjects := slices.Concat(info.Config.Subjects, []string{stream.Subject})
 
 	// remove duplicate subjects in the list.
 	slices.Sort(subjects)
 	info.Config.Subjects = slices.Compact(subjects)
 
-	_, err := client.jetstream.UpdateStream(ctx, info.Config)
-	if err != nil {
+	if _, err := client.jetstream.UpdateStream(ctx, info.Config); err != nil {
 		client.logger.Error("could not add subject to existing stream", zap.String("stream", stream.Name), zap.Error(err))
+
+		return
 	}
 
-	client.logger.Info("stream updated")
+	client.logger.Info("stream updated", zap.String("stream", stream.Name))
 }
 
 func (client *Client) createStream(ctx context.Context, stream Stream) {
@@ -181,25 +181,34 @@ func (client *Client) createStream(ctx context.Context, stream Stream) {
 	client.logger.Info("add new stream")
 }
 
-func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream *Stream) {
+// runStream owns the publish/subscribe lifecycle for a single jetstream stream.
+// It restarts the inner attempt on stall (signalled by subscribeHealth) with
+// exponential backoff, until MaxRetries is exceeded or parentCtx is cancelled.
+func (client *Client) runStream(parentCtx context.Context, stream *Stream) {
 	clusterName := client.connection.ConnectedClusterName()
-	ctx, baseCancel := context.WithCancel(parentCtx) // nolint: gosec
 
-	customCancel := func() {
-		client.logger.Info("Cancel function called")
-		client.metrics.StreamRestart.With(prometheus.Labels{
+	for {
+		if parentCtx.Err() != nil {
+			return
+		}
+
+		restart := client.runStreamAttempt(parentCtx, stream, clusterName)
+
+		select {
+		case <-parentCtx.Done():
+			return
+		case <-restart:
+		}
+
+		client.metrics.StreamRestarts.With(prometheus.Labels{
 			"stream":  stream.Name,
 			"cluster": clusterName,
-			"region":  client.config.Region,
 		}).Add(1)
 
-		// increment retry count and decide whether to retry based on limits
 		client.retryMu.Lock()
 		currentRetry := client.retryCounts[stream.Name]
 		client.retryCounts[stream.Name] = currentRetry + 1
 		client.retryMu.Unlock()
-
-		baseCancel()
 
 		if client.config.MaxRetries > 0 && currentRetry+1 > client.config.MaxRetries {
 			client.logger.Warn("Max retry reached, will not restart stream",
@@ -209,41 +218,59 @@ func (client *Client) setupPublishAndSubscribe(parentCtx context.Context, stream
 			return
 		}
 
-		// calculate wait with exponential backoff and optional multiplier cap
 		multiplier := client.config.RetryBackoffMultiplier
 		if multiplier <= 0 {
 			multiplier = 1
 		}
 
-		backoffFactor := math.Pow(multiplier, float64(currentRetry))
-		wait := time.Duration(backoffFactor * float64(client.config.RetryDelay))
+		wait := time.Duration(math.Pow(multiplier, float64(currentRetry)) * float64(client.config.RetryDelay))
 
 		client.logger.Info("Waiting before restart",
 			zap.String("stream", stream.Name),
 			zap.Duration("wait", wait),
 			zap.Int("retry", currentRetry+1))
 
-		// sleep and restart in a separate goroutine to avoid blocking the health checker
-		go func() {
-			time.Sleep(wait)
-			client.setupPublishAndSubscribe(parentCtx, stream)
-		}()
+		timer := time.NewTimer(wait)
+		select {
+		case <-parentCtx.Done():
+			timer.Stop()
+
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+// runStreamAttempt wires up one publish/subscribe attempt and returns a channel
+// that closes when the attempt should be restarted (subscribe failure or stall).
+func (client *Client) runStreamAttempt(parentCtx context.Context, stream *Stream, clusterName string) <-chan struct{} {
+	restart := make(chan struct{})
+	ctx, cancel := context.WithCancel(parentCtx) //nolint: gosec
+
+	triggerRestart := func() {
+		cancel()
+
+		select {
+		case <-restart:
+		default:
+			close(restart)
+		}
 	}
 
 	messageChannel, consumeCtx, err := client.createSubscribe(ctx, stream)
 	if err != nil {
-		customCancel()
+		triggerRestart()
 
-		return
+		return restart
 	}
 
-	messageReceived := make(chan struct{})
+	messageReceived := make(chan struct{}, 1)
 
 	go client.jetstreamPublish(ctx, stream)
+	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream, clusterName)
+	go client.subscribeHealth(ctx, triggerRestart, stream, messageReceived, consumeCtx)
 
-	go client.jetstreamSubscribe(ctx, messageReceived, messageChannel, stream)
-
-	go client.subscribeHealth(ctx, customCancel, stream, messageReceived, consumeCtx)
+	return restart
 }
 
 func (client *Client) StartBlackboxTest(ctx context.Context) error {
@@ -252,8 +279,8 @@ func (client *Client) StartBlackboxTest(ctx context.Context) error {
 	}
 
 	if client.config.IsJetstream {
-		for _, stream := range client.config.Streams {
-			client.setupPublishAndSubscribe(ctx, &stream)
+		for i := range client.config.Streams {
+			go client.runStream(ctx, &client.config.Streams[i])
 		}
 	} else {
 		for _, stream := range client.config.Streams {
@@ -267,7 +294,7 @@ func (client *Client) StartBlackboxTest(ctx context.Context) error {
 
 // Subscribe subscribes to a list of subjects and returns a channel with incoming messages.
 func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-chan *Message, jetstream.ConsumeContext, error) {
-	messageHandler, h := client.messageHandlerJetstreamFactory()
+	messageHandler, h := client.messageHandlerJetstreamFactory(stream)
 
 	con, err := client.jetstream.CreateOrUpdateConsumer(
 		ctx,
@@ -276,7 +303,7 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-ch
 			DeliverPolicy: jetstream.DeliverNewPolicy,
 			ReplayPolicy:  jetstream.ReplayInstantPolicy,
 			AckPolicy:     jetstream.AckExplicitPolicy,
-			MaxAckPending: client.config.MaxPubAcksInflight,
+			MaxAckPending: client.config.MaxAckPending,
 			FilterSubject: stream.Subject,
 		},
 	)
@@ -298,7 +325,7 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-ch
 	return h, consumeCtx, nil
 }
 
-func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.CancelFunc, stream *Stream, messageReceived <-chan struct{}, consumeCtx jetstream.ConsumeContext) {
+func (client *Client) subscribeHealth(ctx context.Context, triggerRestart func(), stream *Stream, messageReceived <-chan struct{}, consumeCtx jetstream.ConsumeContext) {
 	waitTime := subscribeHealthMultiplication * client.config.PublishInterval
 	timer := time.NewTimer(waitTime)
 
@@ -313,10 +340,6 @@ func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.Ca
 	for {
 		select {
 		case <-messageReceived:
-			if !timer.Stop() {
-				<-timer.C
-			}
-
 			timer.Reset(waitTime)
 
 		case <-ctx.Done():
@@ -325,23 +348,21 @@ func (client *Client) subscribeHealth(ctx context.Context, cancelFunc context.Ca
 			return
 		case <-timer.C:
 			client.logger.Warn("No message received in", zap.Duration("seconds", waitTime), zap.String("stream", stream.Name))
-			cancelFunc()
+			triggerRestart()
 
 			return
 		}
 	}
 }
 
-func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived chan struct{}, h <-chan *Message, stream *Stream) {
+func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived chan<- struct{}, h <-chan *Message, stream *Stream, clusterName string) {
 	var payload Payload
-
-	clusterName := client.connection.ConnectedClusterName()
 
 	defer func() {
 		if r := recover(); r != nil {
 			client.logger.Error("Subscription goroutine panicked", zap.Any("error", r))
 		} else {
-			client.logger.Info("Subscription goroutine exited normally")
+			client.logger.Debug("Subscription goroutine exited normally", zap.String("stream", stream.Name))
 		}
 	}()
 
@@ -352,13 +373,27 @@ func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived ch
 
 			return
 		case msg := <-h:
-			messageReceived <- struct{}{}
+			// non-blocking signal: if the health checker hasn't drained the
+			// previous tick yet, coalesce — it only needs to know "alive".
+			select {
+			case messageReceived <- struct{}{}:
+			default:
+			}
+
+			client.resetRetry(stream.Name)
 
 			if err := json.Unmarshal(msg.Data, &payload); err != nil {
 				client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
 					zap.String("subject", msg.Subject),
 					zap.Error(err),
 				)
+				client.metrics.Messages.With(prometheus.Labels{
+					"operation": OpSubscribe,
+					"result":    ResultFailure,
+					"stream":    stream.Name,
+					"subject":   msg.Subject,
+					"cluster":   clusterName,
+				}).Add(1)
 
 				continue
 			}
@@ -369,33 +404,52 @@ func (client *Client) jetstreamSubscribe(ctx context.Context, messageReceived ch
 				"subject": msg.Subject,
 				"stream":  stream.Name,
 				"cluster": clusterName,
-				"region":  payload.Region,
 			}).Observe(latency)
 
-			client.metrics.SuccessCounter.With(prometheus.Labels{
-				"subject": msg.Subject,
-				"type":    successfulSubscribe,
-				"stream":  stream.Name,
-				"cluster": clusterName,
-				"region":  payload.Region,
+			client.metrics.Messages.With(prometheus.Labels{
+				"operation": OpSubscribe,
+				"result":    ResultSuccess,
+				"stream":    stream.Name,
+				"subject":   msg.Subject,
+				"cluster":   clusterName,
 			}).Add(1)
 
-			client.logger.Info("Received message: ", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
+			client.logger.Debug("Received message", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 		}
+	}
+}
+
+// resetRetry clears the per-stream retry counter — called whenever a message
+// arrives so a healthy stream isn't permanently disabled by accumulated
+// transient failures from earlier in the process lifetime.
+func (client *Client) resetRetry(stream string) {
+	client.retryMu.Lock()
+	defer client.retryMu.Unlock()
+
+	if client.retryCounts[stream] != 0 {
+		client.retryCounts[stream] = 0
 	}
 }
 
 func (client *Client) coreSubscribe(ctx context.Context, subject string) {
 	clusterName := client.connection.ConnectedClusterName()
 
-	messageHandler, h := client.messageHandlerCoreFactory()
+	messageHandler, h := client.messageHandlerCoreFactory(subject)
 
-	if _, err := client.connection.Subscribe(subject, messageHandler); err != nil {
+	sub, err := client.connection.Subscribe(subject, messageHandler)
+	if err != nil {
 		client.logger.Error("Consuming failed, stopping core subscription",
 			zap.String("subject", subject), zap.Error(err))
 
 		return
 	}
+
+	defer func() {
+		if err := sub.Unsubscribe(); err != nil {
+			client.logger.Error("Unsubscribe failed",
+				zap.String("subject", subject), zap.Error(err))
+		}
+	}()
 
 	for {
 		select {
@@ -411,6 +465,13 @@ func (client *Client) coreSubscribe(ctx context.Context, subject string) {
 					zap.String("subject", msg.Subject),
 					zap.Error(err),
 				)
+				client.metrics.Messages.With(prometheus.Labels{
+					"operation": OpSubscribe,
+					"result":    ResultFailure,
+					"stream":    "-",
+					"subject":   subject,
+					"cluster":   clusterName,
+				}).Add(1)
 
 				continue
 			}
@@ -421,18 +482,17 @@ func (client *Client) coreSubscribe(ctx context.Context, subject string) {
 				"subject": subject,
 				"stream":  "-",
 				"cluster": clusterName,
-				"region":  payload.Region,
 			}).Observe(latency)
 
-			client.metrics.SuccessCounter.With(prometheus.Labels{
-				"subject": subject,
-				"stream":  "-",
-				"type":    successfulSubscribe,
-				"cluster": clusterName,
-				"region":  payload.Region,
+			client.metrics.Messages.With(prometheus.Labels{
+				"operation": OpSubscribe,
+				"result":    ResultSuccess,
+				"stream":    "-",
+				"subject":   subject,
+				"cluster":   clusterName,
 			}).Add(1)
 
-			client.logger.Info("Received message", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
+			client.logger.Debug("Received message", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 		}
 	}
 }
@@ -461,12 +521,12 @@ func (client *Client) corePublish(ctx context.Context, subject string) {
 			}
 
 			if err := client.connection.Publish(subject, t); err != nil {
-				client.metrics.SuccessCounter.With(prometheus.Labels{
-					"stream":  "-",
-					"subject": subject,
-					"type":    failedPublish,
-					"cluster": clusterName,
-					"region":  client.config.Region,
+				client.metrics.Messages.With(prometheus.Labels{
+					"operation": OpPublish,
+					"result":    ResultFailure,
+					"stream":    "-",
+					"subject":   subject,
+					"cluster":   clusterName,
 				}).Add(1)
 
 				switch {
@@ -478,12 +538,12 @@ func (client *Client) corePublish(ctx context.Context, subject string) {
 					client.logger.Error("Request failed", zap.Error(err))
 				}
 			} else {
-				client.metrics.SuccessCounter.With(prometheus.Labels{
-					"stream":  "-",
-					"type":    successfulPublish,
-					"cluster": clusterName,
-					"subject": subject,
-					"region":  client.config.Region,
+				client.metrics.Messages.With(prometheus.Labels{
+					"operation": OpPublish,
+					"result":    ResultSuccess,
+					"stream":    "-",
+					"subject":   subject,
+					"cluster":   clusterName,
 				}).Add(1)
 			}
 		}
@@ -514,12 +574,12 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 			}
 
 			if ack, err := client.jetstream.Publish(ctx, stream.Subject, t); err != nil {
-				client.metrics.SuccessCounter.With(prometheus.Labels{
-					"region":  client.config.Region,
-					"subject": stream.Subject,
-					"type":    failedPublish,
-					"stream":  stream.Name,
-					"cluster": clusterName,
+				client.metrics.Messages.With(prometheus.Labels{
+					"operation": OpPublish,
+					"result":    ResultFailure,
+					"stream":    stream.Name,
+					"subject":   stream.Subject,
+					"cluster":   clusterName,
 				}).Add(1)
 
 				switch {
@@ -531,14 +591,14 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 					client.logger.Error("Request failed", zap.Error(err))
 				}
 			} else {
-				client.metrics.SuccessCounter.With(prometheus.Labels{
-					"subject": stream.Subject,
-					"type":    successfulPublish,
-					"stream":  stream.Name,
-					"cluster": clusterName,
-					"region":  client.config.Region,
+				client.metrics.Messages.With(prometheus.Labels{
+					"operation": OpPublish,
+					"result":    ResultSuccess,
+					"stream":    stream.Name,
+					"subject":   stream.Subject,
+					"cluster":   clusterName,
 				}).Add(1)
-				client.logger.Info("receive ack", zap.String("stream", ack.Stream))
+				client.logger.Debug("receive ack", zap.String("stream", ack.Stream))
 			}
 		}
 	}
@@ -546,7 +606,7 @@ func (client *Client) jetstreamPublish(ctx context.Context, stream *Stream) {
 
 const messageChannelBuffer = 128
 
-func (client *Client) messageHandlerJetstreamFactory() (jetstream.MessageHandler, <-chan *Message) {
+func (client *Client) messageHandlerJetstreamFactory(stream *Stream) (jetstream.MessageHandler, <-chan *Message) {
 	ch := make(chan *Message, messageChannelBuffer)
 
 	return func(msg jetstream.Msg) {
@@ -560,13 +620,15 @@ func (client *Client) messageHandlerJetstreamFactory() (jetstream.MessageHandler
 			Data:    msg.Data(),
 		}:
 		default:
+			client.metrics.MessagesDropped.WithLabelValues(stream.Name, msg.Subject()).Add(1)
 			client.logger.Warn("Message channel full, dropping message",
+				zap.String("stream", stream.Name),
 				zap.String("subject", msg.Subject()))
 		}
 	}, ch
 }
 
-func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Message) {
+func (client *Client) messageHandlerCoreFactory(subject string) (nats.MsgHandler, <-chan *Message) {
 	ch := make(chan *Message, messageChannelBuffer)
 
 	return func(msg *nats.Msg) {
@@ -576,6 +638,7 @@ func (client *Client) messageHandlerCoreFactory() (nats.MsgHandler, <-chan *Mess
 			Data:    msg.Data,
 		}:
 		default:
+			client.metrics.MessagesDropped.WithLabelValues("-", subject).Add(1)
 			client.logger.Warn("Message channel full, dropping message",
 				zap.String("subject", msg.Subject))
 		}
@@ -592,16 +655,18 @@ func (client *Client) connect() error {
 	if client.connection, err = nats.Connect(
 		client.config.URL,
 		nats.DisconnectErrHandler(func(conn *nats.Conn, err error) {
-			client.metrics.Connection.WithLabelValues("disconnection", conn.ConnectedClusterName()).Add(1)
+			client.metrics.ConnectionEvents.WithLabelValues(EventDisconnect, conn.ConnectedClusterName()).Add(1)
+			client.metrics.ConnectionUp.Set(0)
 			client.logger.Error("nats disconnected", zap.Error(err))
 		}),
 		nats.ReconnectErrHandler(func(conn *nats.Conn, err error) {
+			client.metrics.ConnectionEvents.WithLabelValues(EventReconnectFailure, conn.ConnectedClusterName()).Add(1)
 			client.logger.Info("nats reconnection failed", zap.Error(err))
-			client.metrics.Connection.WithLabelValues("reconnection-failure", conn.ConnectedClusterName()).Add(1)
 		}),
 		nats.ReconnectHandler(func(conn *nats.Conn) {
+			client.metrics.ConnectionEvents.WithLabelValues(EventReconnect, conn.ConnectedClusterName()).Add(1)
+			client.metrics.ConnectionUp.Set(1)
 			client.logger.Info("nats reconnected")
-			client.metrics.Connection.WithLabelValues("reconnection", conn.ConnectedClusterName()).Add(1)
 		}),
 		nats.MaxReconnects(client.config.MaxReconnection),
 		nats.Name(hostname),
@@ -609,6 +674,8 @@ func (client *Client) connect() error {
 	); err != nil {
 		return fmt.Errorf("nats connect: %w", err)
 	}
+
+	client.metrics.ConnectionUp.Set(1)
 
 	return nil
 }

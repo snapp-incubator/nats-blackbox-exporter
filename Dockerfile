@@ -1,27 +1,28 @@
-# Start from the latest golang base image
-FROM golang:1.26-alpine3.23 AS builder
+# syntax=docker/dockerfile:1.10
 
-# Set the Current Working Directory inside the container
-WORKDIR /app
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine3.23 AS builder
 
-# Copy go mod and sum files
+WORKDIR /src
+
 COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
-# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
-RUN go mod download
-
-# Copy the source from the current directory to the Working Directory inside the container
 COPY . .
 
-# Build the Go app
-WORKDIR /app/cmd/nats-blackbox-exporter
-RUN go build -o /nats-blackbox-exporter
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w" \
+    -o /out/nats-blackbox-exporter ./cmd/nats-blackbox-exporter
 
-FROM alpine:3.23
+FROM gcr.io/distroless/static-debian12:nonroot
 
-WORKDIR /app/
+COPY --from=builder /out/nats-blackbox-exporter /usr/local/bin/nats-blackbox-exporter
 
-COPY --from=builder /nats-blackbox-exporter .
-
-ENTRYPOINT ["./nats-blackbox-exporter"]
-CMD [ "--configPath=./setting/config.yaml" ]
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/nats-blackbox-exporter"]
+CMD ["--configPath=/app/setting/config.yaml"]

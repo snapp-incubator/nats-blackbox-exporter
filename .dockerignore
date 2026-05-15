@@ -1,0 +1,11 @@
+.git
+.github
+charts
+*.md
+LICENSE
+.golangci.yml
+.gitignore
+justfile
+config.example.yaml
+coverage.out
+nats-blackbox-exporter
