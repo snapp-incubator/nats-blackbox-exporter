@@ -458,43 +458,47 @@ func (client *Client) coreSubscribe(ctx context.Context, subject string) {
 
 			return
 		case msg := <-h:
-			var payload Payload
-
-			if err := json.Unmarshal(msg.Data, &payload); err != nil {
-				client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
-					zap.String("subject", msg.Subject),
-					zap.Error(err),
-				)
-				client.metrics.Messages.With(prometheus.Labels{
-					"operation": OpSubscribe,
-					"result":    ResultFailure,
-					"stream":    "-",
-					"subject":   subject,
-					"cluster":   clusterName,
-				}).Add(1)
-
-				continue
-			}
-
-			latency := time.Since(payload.PublishTime).Seconds()
-
-			client.metrics.Latency.With(prometheus.Labels{
-				"subject": subject,
-				"stream":  "-",
-				"cluster": clusterName,
-			}).Observe(latency)
-
-			client.metrics.Messages.With(prometheus.Labels{
-				"operation": OpSubscribe,
-				"result":    ResultSuccess,
-				"stream":    "-",
-				"subject":   subject,
-				"cluster":   clusterName,
-			}).Add(1)
-
-			client.logger.Debug("Received message", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
+			client.handleCoreMessage(clusterName, subject, msg)
 		}
 	}
+}
+
+func (client *Client) handleCoreMessage(clusterName, subject string, msg *Message) {
+	var payload Payload
+
+	if err := json.Unmarshal(msg.Data, &payload); err != nil {
+		client.logger.Error("received message but could not calculate latency due to unmarshalling error.",
+			zap.String("subject", msg.Subject),
+			zap.Error(err),
+		)
+		client.metrics.Messages.With(prometheus.Labels{
+			"operation": OpSubscribe,
+			"result":    ResultFailure,
+			"stream":    "-",
+			"subject":   subject,
+			"cluster":   clusterName,
+		}).Add(1)
+
+		return
+	}
+
+	latency := time.Since(payload.PublishTime).Seconds()
+
+	client.metrics.Latency.With(prometheus.Labels{
+		"subject": subject,
+		"stream":  "-",
+		"cluster": clusterName,
+	}).Observe(latency)
+
+	client.metrics.Messages.With(prometheus.Labels{
+		"operation": OpSubscribe,
+		"result":    ResultSuccess,
+		"stream":    "-",
+		"subject":   subject,
+		"cluster":   clusterName,
+	}).Add(1)
+
+	client.logger.Debug("Received message", zap.String("subject", msg.Subject), zap.Float64("latency", latency))
 }
 
 func (client *Client) corePublish(ctx context.Context, subject string) {
