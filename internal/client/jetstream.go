@@ -273,19 +273,22 @@ func (client *Client) runStreamAttempt(parentCtx context.Context, stream *Stream
 	return restart
 }
 
-func (client *Client) StartBlackboxTest(ctx context.Context) error {
+// StartBlackboxTest launches the publish/subscribe goroutines.
+// Goroutines are bound to client.ctx (process lifetime) rather than the
+// fx OnStart context, which is canceled once the start phase ends.
+func (client *Client) StartBlackboxTest(_ context.Context) error {
 	if len(client.config.Streams) == 0 {
 		return ErrNoStreams
 	}
 
 	if client.config.IsJetstream {
 		for i := range client.config.Streams {
-			go client.runStream(ctx, &client.config.Streams[i])
+			go client.runStream(client.ctx, &client.config.Streams[i]) //nolint:contextcheck
 		}
 	} else {
 		for _, stream := range client.config.Streams {
-			go client.coreSubscribe(ctx, stream.Subject)
-			go client.corePublish(ctx, stream.Subject)
+			go client.coreSubscribe(client.ctx, stream.Subject) //nolint:contextcheck
+			go client.corePublish(client.ctx, stream.Subject)   //nolint:contextcheck
 		}
 	}
 
