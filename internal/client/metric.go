@@ -94,6 +94,20 @@ func newGauge(opts prometheus.GaugeOpts) prometheus.Gauge {
 	return g
 }
 
+// OpenMetrics units, exposed as `# UNIT` lines since client_golang v1.24.
+// A unit must be an underscore-separated suffix of the metric family name
+// (with the counter's `_total` stripped first), otherwise Prometheus rejects
+// the scrape with "unit not a suffix of metric". UnitNone marks a deliberately
+// dimensionless metric — client_golang omits the `# UNIT` line for the empty
+// string, while still satisfying the exhaustruct linter.
+const (
+	UnitNone     = ""
+	UnitSeconds  = "seconds"
+	UnitMessages = "messages"
+	UnitEvents   = "events"
+	UnitRestarts = "restarts"
+)
+
 // NewMetrics constructs and registers the client metric set.
 // `conn` is "jetstream" or "core" and `region` is the deployment region;
 // both are emitted as ConstLabels (process-constant) so they don't bloat
@@ -115,13 +129,16 @@ func NewMetrics(conn, region string) Metrics { //nolint: funlen
 			Subsystem:   Subsystem,
 			Name:        "connection_events_total",
 			Help:        "Total NATS connection lifecycle events (disconnect, reconnect, reconnect_failure).",
+			Unit:        UnitEvents,
 			ConstLabels: constLabels,
 		}, []string{"event", "cluster"}),
 		ConnectionUp: newGauge(prometheus.GaugeOpts{
-			Namespace:   Namespace,
-			Subsystem:   Subsystem,
-			Name:        "connection_up",
-			Help:        "Whether the NATS connection is currently established (1) or not (0).",
+			Namespace: Namespace,
+			Subsystem: Subsystem,
+			Name:      "connection_up",
+			Help:      "Whether the NATS connection is currently established (1) or not (0).",
+			// Boolean state, so dimensionless: no `# UNIT` line is emitted.
+			Unit:        UnitNone,
 			ConstLabels: constLabels,
 		}),
 		// nolint: exhaustruct
@@ -130,6 +147,7 @@ func NewMetrics(conn, region string) Metrics { //nolint: funlen
 			Subsystem:   Subsystem,
 			Name:        "latency_seconds",
 			Help:        "End-to-end latency from publish to consume, in seconds.",
+			Unit:        UnitSeconds,
 			ConstLabels: constLabels,
 			Buckets:     latencyBuckets,
 		}, []string{"stream", "subject", "cluster"}),
@@ -138,13 +156,19 @@ func NewMetrics(conn, region string) Metrics { //nolint: funlen
 			Subsystem:   Subsystem,
 			Name:        "messages_total",
 			Help:        "Total publish/subscribe attempts, partitioned by operation and result.",
+			Unit:        UnitMessages,
 			ConstLabels: constLabels,
 		}, []string{"operation", "result", "stream", "subject", "cluster"}),
 		MessagesDropped: newCounterVec(prometheus.CounterOpts{
-			Namespace:   Namespace,
-			Subsystem:   Subsystem,
-			Name:        "messages_dropped_total",
-			Help:        "Messages dropped because the in-process handler channel was full.",
+			Namespace: Namespace,
+			Subsystem: Subsystem,
+			Name:      "messages_dropped_total",
+			Help:      "Messages dropped because the in-process handler channel was full.",
+			// "messages" is not a suffix of `..._messages_dropped`, so tagging a
+			// unit here would make Prometheus reject the scrape. Renaming the
+			// metric to carry the suffix would break existing dashboards, so it
+			// stays unit-less.
+			Unit:        UnitNone,
 			ConstLabels: constLabels,
 		}, []string{"stream", "subject"}),
 		StreamRestarts: newCounterVec(prometheus.CounterOpts{
@@ -152,6 +176,7 @@ func NewMetrics(conn, region string) Metrics { //nolint: funlen
 			Subsystem:   Subsystem,
 			Name:        "stream_restarts_total",
 			Help:        "Times a stream's publish/subscribe loop has been restarted due to a stall.",
+			Unit:        UnitRestarts,
 			ConstLabels: constLabels,
 		}, []string{"stream", "cluster"}),
 	}
