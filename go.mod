@@ -1,6 +1,6 @@
 module github.com/snapp-incubator/nats-blackbox-exporter
 
-go 1.26
+go 1.27
 
 require (
 	github.com/knadh/koanf v1.5.0

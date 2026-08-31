@@ -19,12 +19,12 @@ import (
 const ExitFailure = 1
 
 func Execute() {
-	// nolint: exhaustruct
+	// nolint: exhaustruct_v5
 	root := &cli.Command{
 		Name:        "nats-blackbox-exporter",
 		Description: "ping pong with nats broker to make sure it is up and running",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
+			&cli.StringFlag{ // nolint: exhaustruct_v5
 				Name:  "configPath",
 				Value: "./config.yaml",
 				Usage: "Path to config file",

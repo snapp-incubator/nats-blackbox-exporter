@@ -141,7 +141,7 @@ func NewMetrics(conn, region string) Metrics { //nolint: funlen
 			Unit:        UnitNone,
 			ConstLabels: constLabels,
 		}),
-		// nolint: exhaustruct
+		// nolint: exhaustruct_v5
 		Latency: newHistogramVec(prometheus.HistogramOpts{
 			Namespace:   Namespace,
 			Subsystem:   Subsystem,

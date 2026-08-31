@@ -170,7 +170,7 @@ func (client *Client) updateStream(ctx context.Context, stream Stream, info *jet
 }
 
 func (client *Client) createStream(ctx context.Context, stream Stream) {
-	// nolint: exhaustruct
+	// nolint: exhaustruct_v5
 	if _, err := client.jetstream.CreateStream(ctx, jetstream.StreamConfig{
 		Name:     stream.Name,
 		Subjects: []string{stream.Subject},
@@ -302,7 +302,7 @@ func (client *Client) createSubscribe(ctx context.Context, stream *Stream) (<-ch
 	con, err := client.jetstream.CreateOrUpdateConsumer(
 		ctx,
 		stream.Name,
-		jetstream.ConsumerConfig{ // nolint: exhaustruct
+		jetstream.ConsumerConfig{ // nolint: exhaustruct_v5
 			DeliverPolicy: jetstream.DeliverNewPolicy,
 			ReplayPolicy:  jetstream.ReplayInstantPolicy,
 			AckPolicy:     jetstream.AckExplicitPolicy,

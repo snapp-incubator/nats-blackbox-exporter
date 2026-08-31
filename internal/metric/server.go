@@ -19,13 +19,13 @@ type ServerInfo struct {
 // Provide creates a new monitoring server.
 // nolint: mnd
 func Provide(lc fx.Lifecycle, cfg Config, logger *zap.Logger) ServerInfo {
-	s := ServerInfo{} //nolint:exhaustruct
+	s := ServerInfo{} //nolint:exhaustruct_v5
 
 	if cfg.Enabled {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
 
-		// nolint: exhaustruct
+		// nolint: exhaustruct_v5
 		s.server = &http.Server{
 			Addr:         cfg.Server.Address,
 			Handler:      mux,

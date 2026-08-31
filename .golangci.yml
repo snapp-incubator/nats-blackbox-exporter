@@ -15,3 +15,4 @@ linters:
     - lll
     - funcorder
     - noinlineerr
+    - exhaustruct
