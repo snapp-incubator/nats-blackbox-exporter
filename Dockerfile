@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.10
 
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.23 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.24 AS builder
 
 WORKDIR /src
 
@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -ldflags="-s -w" \
     -o /out/nats-blackbox-exporter ./cmd/nats-blackbox-exporter
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
 COPY --from=builder /out/nats-blackbox-exporter /usr/local/bin/nats-blackbox-exporter
 
