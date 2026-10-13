@@ -6,7 +6,7 @@ require (
 	github.com/knadh/koanf v1.5.0
 	github.com/knadh/koanf/v2 v2.3.7
 	github.com/nats-io/nats.go v1.54.0
-	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_golang v1.25.0
 	github.com/pterm/pterm v0.12.83
 	github.com/tidwall/pretty v1.2.2
 	github.com/urfave/cli/v3 v3.14.0
