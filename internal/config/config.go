@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -52,7 +53,8 @@ func Provide(configPath string) Config {
 
 	// load environment variables
 	if err := k.Load(env.Provider(".", env.Opt{
-		Prefix: Prefix,
+		Prefix:      Prefix,
+		EnvironFunc: os.Environ,
 		TransformFunc: func(k, v string) (string, any) {
 			return strings.ReplaceAll(strings.ToLower(
 				strings.TrimPrefix(k, Prefix)), "__", "."), v
