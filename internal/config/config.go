@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
-	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
@@ -51,9 +51,12 @@ func Provide(configPath string) Config {
 	}
 
 	// load environment variables
-	if err := k.Load(env.Provider(Prefix, ".", func(s string) string {
-		return strings.ReplaceAll(strings.ToLower(
-			strings.TrimPrefix(s, Prefix)), "__", ".")
+	if err := k.Load(env.Provider(".", env.Opt{
+		Prefix: Prefix,
+		TransformFunc: func(k, v string) (string, any) {
+			return strings.ReplaceAll(strings.ToLower(
+				strings.TrimPrefix(k, Prefix)), "__", "."), v
+		},
 	}), nil); err != nil {
 		log.Printf("error loading environment variables: %s", err)
 	}
