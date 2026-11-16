@@ -11,7 +11,7 @@ require (
 	github.com/nats-io/nats.go v1.55.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/pterm/pterm v0.12.84
-	github.com/tidwall/pretty v1.2.2
+	github.com/tidwall/pretty v1.3.0
 	github.com/urfave/cli/v3 v3.14.0
 	go.uber.org/fx v1.24.0
 	go.uber.org/zap v1.28.0
