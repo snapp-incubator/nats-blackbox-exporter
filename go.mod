@@ -8,7 +8,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/providers/structs v1.0.1
 	github.com/knadh/koanf/v2 v2.4.1
-	github.com/nats-io/nats.go v1.55.0
+	github.com/nats-io/nats.go v1.56.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/pterm/pterm v0.12.84
 	github.com/tidwall/pretty v1.3.0
